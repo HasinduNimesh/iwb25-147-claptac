@@ -1,0 +1,16 @@
+type Recommendation {
+  id: ID!
+  applianceId: String!
+  suggestedStart: String!
+  durationMinutes: Int!
+  reasons: [String!]!
+  estSavingLKR: Float!
+}
+
+type Query {
+  currentPlan(userId: String!, date: String!): [Recommendation!]!
+}
+
+type Subscription {
+  adviceUpdated(userId: String!): Recommendation!
+}

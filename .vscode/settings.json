@@ -1,0 +1,7 @@
+{
+  "yaml.schemas": {
+    "https://json.schemastore.org/openapi-3.0.json": [
+      "docs/api_openapi.yaml"
+    ]
+  }
+}

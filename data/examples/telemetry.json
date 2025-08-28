@@ -1,0 +1,14 @@
+[
+  {
+    "applianceId": "pump-1",
+    "timestamp": "2025-08-19T20:00:00+05:30",
+    "powerW": 750,
+    "energyWh": 375
+  },
+  {
+    "applianceId": "ac-1",
+    "timestamp": "2025-08-19T19:00:00+05:30",
+    "powerW": 1200,
+    "energyWh": 600
+  }
+]

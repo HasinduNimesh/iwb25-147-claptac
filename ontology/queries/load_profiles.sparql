@@ -1,0 +1,6 @@
+PREFIX : <http://lankawattwise.org/ontology#>
+SELECT ?appliance ?profile ?flexibility WHERE {
+  ?appliance a :Appliance ;
+            :hasLoadProfile ?profile .
+  ?profile :hasFlexibility ?flexibility .
+}

@@ -1,0 +1,15 @@
+@prefix : <http://lankawattwise.org/ontology#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:WellPump a :Appliance ;
+  :hasLoadProfile :PumpProfile ;
+  :requiresMinDailyRuntime "30"^^xsd:int ;
+  :maxDeferralMinutes "120"^^xsd:int ;
+  :belongsTo :PremisesA .
+
+:PumpProfile a :LoadProfile ;
+  :hasFlexibility "shiftable" ;
+  :dutyCycle "0.5"^^xsd:float .
+
+:TOU_Peak a :TimeOfUseWindow ; :label "Peak" .
+:TariffD a :TariffPlan ; :hasWindow :TOU_Peak .

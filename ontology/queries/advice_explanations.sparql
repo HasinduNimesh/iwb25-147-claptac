@@ -1,0 +1,6 @@
+PREFIX : <http://lankawattwise.org/ontology#>
+SELECT ?rec ?appliance ?reason WHERE {
+  ?rec a :Recommendation ;
+       :justifiedBy ?reason ;
+       :applianceId ?appliance .
+}

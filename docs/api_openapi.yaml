@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://json.schemastore.org/openapi-3.0.json
+openapi: "3.0.3"
+info:
+  title: LankaWattWise API
+  version: "0.1.0"
+  description: REST endpoints surfaced by the API gateway/advice service.
+servers:
+  - url: http://localhost:8083
+paths:
+  /advice/plan:
+    get:
+      summary: Get advice plan
+      parameters:
+        - in: query
+          name: userId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of recommendations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Recommendation'
+components:
+  schemas:
+    Recommendation:
+      type: object
+      required: [id, applianceId, suggestedStart, durationMinutes, reasons, estSavingLKR]
+      properties:
+        id:
+          type: string
+        applianceId:
+          type: string
+        suggestedStart:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+        reasons:
+          type: array
+          items:
+            type: string
+        estSavingLKR:
+          type: number

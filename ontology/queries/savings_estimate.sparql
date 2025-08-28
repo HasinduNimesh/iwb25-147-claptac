@@ -1,0 +1,7 @@
+PREFIX : <http://lankawattwise.org/ontology#>
+SELECT ?appliance ?oldCost ?newCost ?saving WHERE {
+  ?appliance a :Appliance ;
+             :oldCost ?oldCost ;
+             :newCost ?newCost ;
+             :saving ?saving .
+}

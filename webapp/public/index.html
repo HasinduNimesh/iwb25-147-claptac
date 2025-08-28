@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LankaWattWise</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 2rem; background:#f7f7f7;}
+    .container { max-width: 900px; margin: 0 auto; }
+    .card { background:#fff; border: 1px solid #e5e5e5; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+    button { padding: 0.5rem 1rem; }
+    pre { background: #111; color: #0f0; padding: 1rem; overflow:auto; }
+    label { display:inline-block; margin-right:1rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>LankaWattWise</h1>
+
+  <div class="card">
+    <h3>GraphQL Health</h3>
+    <button id="btnHealth">Check Health</button>
+    <div id="healthOut"></div>
+  </div>
+
+  <div class="card">
+    <h3>Current Plan</h3>
+    <label>User ID <input id="userId" value="demo" /></label>
+    <label>Date <input id="dateStr" value="2025-08-19" /></label>
+    <button id="btnPlan">Fetch Plan</button>
+    <pre id="planOut"></pre>
+  </div>
+</div>
+<script>
+async function gql(query, variables) {
+  const res = await fetch('/gql', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, variables })
+  });
+  if (!res.ok) throw new Error('GQL HTTP ' + res.status);
+  return res.json();
+}
+
+document.getElementById('btnHealth').onclick = async () => {
+  try {
+    const data = await gql('{ health }');
+    document.getElementById('healthOut').textContent = 'health: ' + (data.data && data.data.health);
+  } catch (e) { document.getElementById('healthOut').textContent = e.toString(); }
+};
+
+document.getElementById('btnPlan').onclick = async () => {
+  const userId = document.getElementById('userId').value;
+  const date = document.getElementById('dateStr').value;
+  const query = "query($userId:String!,$date:String!){ currentPlan(userId:$userId,date:$date){ id applianceId suggestedStart durationMinutes reasons estSavingLKR } }";
+  try {
+    const data = await gql(query, { userId, date });
+    document.getElementById('planOut').textContent = JSON.stringify(data, null, 2);
+  } catch (e) { document.getElementById('planOut').textContent = e.toString(); }
+};
+</script>
+</body>
+</html>
