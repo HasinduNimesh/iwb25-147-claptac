@@ -1,0 +1,12 @@
+# Exclude build outputs and VCS
+.target/
+**/target/
+.git/
+.gitignore
+.DS_Store
+
+# Editor/OS
+.vscode/
+
+# Webapp/node (not needed in this context)
+**/node_modules/

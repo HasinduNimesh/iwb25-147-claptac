@@ -1,0 +1,57 @@
+# General
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# VS Code
+.vscode/
+.history/
+
+# Environment files
+.env
+**/.env
+**/.env.*
+deploy/.env
+
+# Ballerina build artifacts
+ballerina/target/
+**/target/
+**/.ballerina/
+
+# Java/JARs (generated)
+**/*.jar
+
+# Node / Webapp
+webapp/node_modules/
+webapp/dist/
+webapp/.vite/
+webapp/.parcel-cache/
+webapp/.cache/
+webapp/npm-debug.log*
+webapp/yarn-debug.log*
+webapp/yarn-error.log*
+webapp/pnpm-debug.log*
+
+# Frontend envs
+webapp/.env
+webapp/.env.*
+
+# Docker
+**/.dockerignore.local
+.docker/
+
+# OS-specific
+$RECYCLE.BIN/
+
+# Build outputs (misc)
+**/out/
+**/build/
+
+# Coverage
+coverage/
+**/.nyc_output/

@@ -7,7 +7,6 @@ license = ["Apache-2.0"]
 authors = ["LankaWattWise Team"]
 keywords = ["energy", "ontology", "sri-lanka", "ballerina"]
 
-distribution = "slbeta"
 
 [build-options]
 observabilityIncluded = true
