@@ -71,6 +71,16 @@ service /graphql on new graphql:Listener(port_graphql) {
     resource function get explain(string recId) returns Explanation[]|error {
         return [ { ruleId: "Rule:MinRuntime30", detail: "Daily minimum runtime 30 minutes" }, { ruleId: "TOU:OffPeak_21_05", detail: "Shifted to off-peak window 21:00-05:00" } ];
     }
+
+    // Minimal mutations to acknowledge accept/dismiss from UI
+    resource function post accept(string recId) returns record {| boolean ok; |} {
+        // In a real system, persist the decision; here we simply ack
+        return { ok: true };
+    }
+
+    resource function post dismiss(string recId) returns record {| boolean ok; |} {
+        return { ok: true };
+    }
 }
 
 // Separate health endpoint for tooling

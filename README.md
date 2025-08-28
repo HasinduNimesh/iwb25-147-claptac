@@ -22,15 +22,21 @@ Ontology-driven energy advice for Sri Lanka, powered by Ballerina microservices.
 - This produces `webapp/dist` which the UI gateway will serve.
 
 2) Start Ballerina app
-- From `ballerina/`, run `bal run`.
+- From `ballerina/`, run `bal run` (or `./run-all.ps1` on Windows to start each service in its own terminal).
 - The UI gateway listens on http://localhost:9080 and proxies:
-	- POST /graphql and /gql → API Gateway (GraphQL)
-	- GET  /tariff/windows → Tariff Context
-	- GET  /ontology/appliances → Ontology Proxy
-	- GET  /advice/plan → Advice Engine
+	- POST /graphql and /gql -> API Gateway (GraphQL)
+	- GET  /tariff/windows -> Tariff Context
+	- GET  /ontology/appliances -> Ontology Proxy
+	- GET  /advice/plan -> Advice Engine
+	- GET  /billing/* -> Billing Service
+	- POST /scheduler/optimize -> Scheduler Service
 
 3) Open the UI at http://localhost:9080
 If backend services are offline, the UI falls back to mock data.
+
+Notes
+- The UI normalizes tariff windows and ontology appliances so all controls render regardless of minor schema differences.
+- GraphQL mutations `accept` and `dismiss` are implemented as simple acknowledgments for the UI.
 
 ## Repo Structure
 ```

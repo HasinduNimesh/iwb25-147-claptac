@@ -15,6 +15,31 @@ async function gql(query, variables = {}) {
   return json.data;
 }
 function fmtMoneyLKR(v) { return new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR", maximumFractionDigits: 0 }).format(v || 0); }
+// Normalize tariff windows from different service shapes into the UI shape
+// Accepts either:
+// - { windows: [{ name, startTime, endTime, rateLKR }] }
+// - [{ label, startTime, endTime, rateLKRPerKWh }]
+function normalizeWindows(input) {
+  const arr = Array.isArray(input) ? input : (Array.isArray(input?.windows) ? input.windows : []);
+  return arr.map((w) => ({
+    name: w.name || w.label || "Window",
+    startTime: w.startTime,
+    endTime: w.endTime,
+    rateLKR: w.rateLKR != null ? w.rateLKR : (w.rateLKRPerKWh != null ? w.rateLKRPerKWh : 0)
+  }));
+}
+// Normalize appliances returned by ontology service to UI-friendly shape
+// Accepts either:
+// - [{ id, label, flexibility }]
+// - { appliances: [...] }
+function normalizeAppliances(input) {
+  const arr = Array.isArray(input) ? input : (Array.isArray(input?.appliances) ? input.appliances : []);
+  return arr.map((a) => ({
+    id: a.id,
+    label: a.label || a.name || a.id,
+    flexible: (a.flexible != null) ? !!a.flexible : ((a.flexibility || "").toLowerCase() === "shiftable"),
+  }));
+}
 function todayISOInColombo() {
   const d = new Date(); const y = d.getFullYear(); const m = `${d.getMonth() + 1}`.padStart(2, "0"); const dd = `${d.getDate()}`.padStart(2, "0"); return `${y}-${m}-${dd}`;
 }
@@ -82,7 +107,8 @@ export default function LankaWattWiseApp() {
   const tariffJson = tRes && tRes.ok ? await tRes.json().catch(() => null) : null;
   const applJson = aRes && aRes.ok ? await aRes.json().catch(() => null) : null;
   setTariff(tariffJson || mockTariffs);
-  setAppliances((applJson && Array.isArray(applJson.appliances) ? applJson.appliances : null) || mockAppliances);
+  const normAppl = normalizeAppliances(applJson);
+  setAppliances(normAppl.length ? normAppl : mockAppliances);
   const bRes = await fetch(`/billing/preview?userId=${userId}&monthlyKWh=200`).catch(() => null);
   const bJson = bRes && bRes.ok ? await bRes.json().catch(() => null) : null;
   setBill(bJson);
@@ -112,7 +138,7 @@ export default function LankaWattWiseApp() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <Sparkles className="w-6 h-6 text-emerald-600" />
           <h1 className="text-xl font-bold">LankaWattWise</h1>
-          <Pill className="ml-2 bg-emerald-100 text-emerald-700">Ontology‑Driven</Pill>
+          <Pill className="ml-2 bg-emerald-100 text-emerald-700">Ontology-Driven</Pill>
           <div className="ml-auto flex items-center gap-2">
             <Calendar className="w-4 h-4 text-slate-500" />
             <input type="date" className="px-2 py-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/50" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -129,30 +155,30 @@ export default function LankaWattWiseApp() {
 
       <main className="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="col-span-1 lg:col-span-1 space-y-4">
-          <Section title="Today’s Savings" icon={TrendingUp} right={<div className="flex items-center gap-2 text-sm text-slate-500"><Wifi className={`w-4 h-4 ${health ? "text-emerald-500" : "text-slate-400"}`} /><span>{health ? "Connected" : "Offline"}</span></div>}>
+          <Section title="Today's Savings" icon={TrendingUp} right={<div className="flex items-center gap-2 text-sm text-slate-500"><Wifi className={`w-4 h-4 ${health ? "text-emerald-500" : "text-slate-400"}`} /><span>{health ? "Connected" : "Offline"}</span></div>}>
             <div className="flex items-end gap-4"><div><div className="text-3xl font-extrabold">{fmtMoneyLKR(totalSaving)}</div><div className="text-sm text-slate-500">Potential saving for {date}</div></div></div>
             <div className="mt-3"><SavingsChart data={mockSavingsSeries} /></div>
           </Section>
-          <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>{tariff ? <TariffBar windows={tariff?.windows || []} /> : <div className="text-slate-500">Loading…</div>}</Section>
+          <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>{tariff ? <TariffBar windows={normalizeWindows(tariff)} /> : <div className="text-slate-500">Loading...</div>}</Section>
           <Section title="Bill Preview" icon={Receipt}>
             {bill ? (
               <div className="text-sm text-slate-600">For 200 kWh: <b>{fmtMoneyLKR(Math.round((bill.estimatedCostLKR || 0)))}</b> <span className="text-slate-500">{bill.note || ""}</span></div>
             ) : (
-              <div className="text-slate-500">Loading…</div>
+              <div className="text-slate-500">Loading...</div>
             )}
           </Section>
         </div>
         <div className="col-span-1 lg:col-span-2 space-y-4">
           <Section title="Recommended Plan" icon={Plug} right={<div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-sm text-slate-600"><Scale className="w-4 h-4" /> <span>Money</span>
-              <input aria-label="alpha" type="range" min="0" max="1" step="0.1" value={alpha} onChange={(e)=>setAlpha(parseFloat(e.target.value))} /> <span>CO₂</span></div>
+              <input aria-label="alpha" type="range" min="0" max="1" step="0.1" value={alpha} onChange={(e)=>setAlpha(parseFloat(e.target.value))} /> <span>CO2</span></div>
             <button className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-sm hover:opacity-90" onClick={async()=>{
               const res = await fetch('/scheduler/optimize', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId, date, alpha }) }).catch(()=>null);
               const j = res && res.ok ? await res.json().catch(()=>null) : null;
               if (j?.plan) setPlan(j.plan);
             }}><RefreshCcw className="w-4 h-4" /> Optimize</button>
           </div>}>
-            {loading && (<div className="flex items-center gap-3 text-slate-500"><Loader2 className="w-4 h-4 animate-spin"/> Loading plan…</div>)}
+            {loading && (<div className="flex items-center gap-3 text-slate-500"><Loader2 className="w-4 h-4 animate-spin"/> Loading plan...</div>)}
             {!loading && (
               <div className="space-y-3">
                 <AnimatePresence>
@@ -186,7 +212,7 @@ export default function LankaWattWiseApp() {
               {safeAppliances.map((a) => (
                 <div key={a.id} className="p-3 rounded-xl border border-slate-200 bg-white/70 flex items-center gap-3">
                   {a.icon ? <a.icon className="w-5 h-5 text-slate-600" /> : <Plug className="w-5 h-5 text-slate-600" />}
-                  <div className="flex-1 min-w-0"><div className="font-medium truncate">{a.label}</div><div className="text-xs text-slate-500">{a.flexible ? "Shiftable" : "Non‑shiftable"}</div></div>
+                  <div className="flex-1 min-w-0"><div className="font-medium truncate">{a.label}</div><div className="text-xs text-slate-500">{a.flexible ? "Shiftable" : "Non-shiftable"}</div></div>
                   <label className="inline-flex items-center cursor-pointer select-none">
                     <input type="checkbox" className="sr-only peer" defaultChecked={a.flexible} />
                     <div className="w-10 h-6 bg-slate-200 rounded-full peer-checked:bg-emerald-500 relative transition"><div className="w-5 h-5 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:left-4 transition"/></div>
@@ -221,7 +247,7 @@ export default function LankaWattWiseApp() {
 
               <button className="px-3 py-1.5 rounded-lg border" onClick={async()=>{
                 await fetch(`/config/co2?userId=${userId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ defaultKgPerKWh:0.53 })});
-              }}>Set CO₂ 0.53</button>
+              }}>Set CO2 0.53</button>
 
               <button className="px-3 py-1.5 rounded-lg border" onClick={async()=>{
                 await fetch(`/config/solar?userId=${userId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ scheme:"NET_ACCOUNTING", exportPriceLKR:37 })});
