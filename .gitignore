@@ -23,6 +23,10 @@ ballerina/target/
 **/target/
 **/.ballerina/
 
+# Ballerina auto-generated dependency graph (let Docker/container build regenerate it)
+# Ignoring prevents distribution version mismatches between local env and image
+ballerina/Dependencies.toml
+
 # Java/JARs (generated)
 **/*.jar
 
