@@ -59,6 +59,26 @@ const mockPlan = [
 ];
 const mockSavingsSeries = Array.from({ length: 14 }).map((_, i) => ({ day: i + 1, saved: Math.round(200 + Math.random() * 120) }));
 
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error('UI error:', error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-6">
+          <div className="max-w-lg w-full bg-white rounded-xl border p-6 text-slate-700">
+            <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
+            <p className="text-sm mb-4">An error occurred while rendering the UI. Please check the browser console for details.</p>
+            <pre className="text-xs bg-slate-100 p-3 rounded overflow-auto max-h-40">{String(this.state.error || '')}</pre>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const Pill = ({ children, className = "" }) => (<span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${className}`}>{children}</span>);
 function Section({ title, icon: Icon, right, children }) { return (<div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
   <div className="flex items-center justify-between mb-3"><div className="flex items-center gap-2 text-slate-700 dark:text-slate-200">{Icon && <Icon className="w-5 h-5" />}<h2 className="text-lg font-semibold">{title}</h2></div><div>{right}</div></div>{children}
@@ -72,8 +92,15 @@ function SavingsChart({ data }) { return (
 function TariffBar({ windows = [] }) {
   const segments = React.useMemo(() => {
     if (!Array.isArray(windows) || windows.length === 0) return [];
-    const toMin = (s) => { const [hh, mm] = s.split(":").map(Number); return hh * 60 + mm; };
-    const parts = windows.map((w) => ({ ...w, start: toMin(w.startTime), end: toMin(w.endTime) }));
+    const toMin = (s) => {
+      if (!s || typeof s !== 'string' || !s.includes(':')) return NaN;
+      const [hh, mm] = s.split(":").map((v) => Number(v));
+      if (Number.isNaN(hh) || Number.isNaN(mm)) return NaN;
+      return hh * 60 + mm;
+    };
+    const parts = windows
+      .map((w) => ({ ...w, start: toMin(w.startTime), end: toMin(w.endTime) }))
+      .filter((p) => Number.isFinite(p.start) && Number.isFinite(p.end));
     const split = []; parts.forEach((p) => { if (p.end > p.start) { split.push({ ...p, start: p.start, end: p.end }); } else { split.push({ ...p, start: p.start, end: 24 * 60 }); split.push({ ...p, start: 0, end: p.end }); } });
     return split.sort((a, b) => a.start - b.start);
   }, [windows]);
@@ -88,6 +115,15 @@ function TariffBar({ windows = [] }) {
       <div className="flex gap-2 mt-2 flex-wrap">{windows.map((w, i) => (<Pill key={i} className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">{w.name}: {w.startTime}–{w.endTime} · {fmtMoneyLKR(w.rateLKR)} /kWh</Pill>))}</div>
     </div>
   );
+}
+
+function formatTimeMaybe(dateStr) {
+  try {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (_) { return null; }
 }
 
 export default function LankaWattWiseApp() {
@@ -151,6 +187,7 @@ export default function LankaWattWiseApp() {
   }
 
   const [userId, setUserId] = useState(user?.email || "demo");
+  useEffect(() => { if (user?.email) setUserId(user.email); }, [user?.email]);
   const [date, setDate] = useState(todayISOInColombo());
   const [alpha, setAlpha] = useState(1);
   const [health, setHealth] = useState(null);
@@ -212,6 +249,7 @@ export default function LankaWattWiseApp() {
   const planWithAppliance = safePlan.map((r) => ({ ...r, appliance: safeAppliances.find((a) => a.id === r.applianceId) }));
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-950 text-slate-900 dark:text-slate-100">
       <header className="sticky top-0 z-30 backdrop-blur bg-white/70 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -280,7 +318,7 @@ export default function LankaWattWiseApp() {
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <div className="font-semibold">{rec.appliance?.label || rec.applianceId}</div>
-                            <Pill className="bg-emerald-100 text-emerald-700">{new Date(rec.suggestedStart).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Pill>
+                            <Pill className="bg-emerald-100 text-emerald-700">{formatTimeMaybe(rec.suggestedStart) || 'TBD'}</Pill>
                             <Pill className="bg-slate-100 text-slate-700">{rec.durationMinutes} min</Pill>
                             <Pill className="bg-amber-100 text-amber-700">{fmtMoneyLKR(rec.estSavingLKR)} est.</Pill>
                           </div>
@@ -351,6 +389,7 @@ export default function LankaWattWiseApp() {
       {error && (<div className="fixed bottom-4 right-4 bg-rose-50 text-rose-700 border border-rose-200 px-3 py-2 rounded-lg shadow">{error}</div>)}
 
       <footer className="max-w-6xl mx-auto p-4 text-xs text-slate-500"><div className="flex items-center gap-2"><Info className="w-4 h-4" /><span>Demo UI. GraphQL and services optional; falls back to mock data if offline.</span></div></footer>
-    </div>
+  </div>
+  </ErrorBoundary>
   );
 }
