@@ -102,3 +102,4 @@ logs/
 **/Config.local.toml
 **/Config.*.local.toml
 **/*.override.toml
+/ballerina/target
