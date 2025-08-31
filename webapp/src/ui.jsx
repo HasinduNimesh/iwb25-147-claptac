@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, Plug, Info, CheckCircle2, XCircle, RefreshCcw, Calendar, Layers, Sparkles, Wifi, Activity, Sun, Moon, Loader2, Settings, Scale, Receipt } from "lucide-react";
+import { TrendingUp, Plug, Info, CheckCircle2, XCircle, RefreshCcw, Calendar, Layers, Sparkles, Wifi, Activity, Sun, Moon, Loader2, Settings, Scale, Receipt, LogOut, User } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useAuth } from './AuthContext.jsx';
+import Login from './Login.jsx';
+import Signup from './Signup.jsx';
 
 const GQL_URL = "/graphql";
 async function gql(query, variables = {}) {
@@ -88,7 +91,66 @@ function TariffBar({ windows = [] }) {
 }
 
 export default function LankaWattWiseApp() {
-  const [userId, setUserId] = useState("demo");
+  const { user, isAuthenticated, login, signup, logout, loading } = useAuth();
+  const [showSignup, setShowSignup] = useState(false);
+
+  // Initial auth check loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-600">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+        Loading...
+      </div>
+    );
+  }
+
+  // If not authenticated, show login/signup screen
+  if (!isAuthenticated()) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
+        <div className="max-w-md w-full mx-4">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Lanka Watt Wise</h1>
+            <p className="text-slate-600 dark:text-slate-400">Smart Energy Management System</p>
+          </div>
+
+          {showSignup ? (
+            <div>
+              <Signup 
+                onSignup={(u) => login(u)}
+                onSwitchToLogin={() => setShowSignup(false)}
+              />
+              <div className="text-center mt-4">
+                <button 
+                  onClick={() => setShowSignup(false)}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  Already have an account? Sign in
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <Login 
+                onLogin={(u) => login(u)}
+                onSwitchToSignup={() => setShowSignup(true)}
+              />
+              <div className="text-center mt-4">
+                <button 
+                  onClick={() => setShowSignup(true)}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  Don't have an account? Sign up
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const [userId, setUserId] = useState(user?.email || "demo");
   const [date, setDate] = useState(todayISOInColombo());
   const [alpha, setAlpha] = useState(1);
   const [health, setHealth] = useState(null);
@@ -96,7 +158,7 @@ export default function LankaWattWiseApp() {
   const [appliances, setAppliances] = useState([]);
   const [tariff, setTariff] = useState(null);
   const [bill, setBill] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState("");
   const [accepted, setAccepted] = useState({});
   const [dismissed, setDismissed] = useState({});
@@ -104,40 +166,33 @@ export default function LankaWattWiseApp() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      setLoading(true); setError("");
+      setDataLoading(true); setError("");
       try {
-        // For now, use mock data directly to avoid proxy errors
-        // TODO: Re-enable API calls when backend services are running
-        /*
+        // Live API calls through UI gateway with graceful fallbacks
         const data = await gql(`query Q($userId:String!, $date:String!) { health currentPlan(userId:$userId, date:$date){ id applianceId suggestedStart durationMinutes reasons estSavingLKR } }`, { userId, date }).catch(() => null);
-        const tRes = await fetch(`/tariff/windows?date=${date}`).catch(() => null);
-        const aRes = await fetch(`/ontology/appliances?userId=${userId}`).catch(() => null);
-        */
+        const [tRes, aRes, bRes] = await Promise.all([
+          fetch(`/tariff/windows?date=${date}`).catch(() => null),
+          fetch(`/ontology/appliances?userId=${userId}`).catch(() => null),
+          fetch(`/billing/preview?userId=${userId}&monthlyKWh=150`).catch(() => null)
+        ]);
         if (cancelled) return;
-        
-        // Use mock data that reflects the ontology structure
-        setHealth("ok (mock - ontology connected)");
-        setPlan(mockPlan);
-        setTariff(mockTariffs);
-        setAppliances(mockAppliances);
-        
-        /*
-        // Original API-based code (commented out)
-        setHealth(data?.health || "ok (mock)");
-        setPlan(data?.currentPlan || mockPlan);
+
+        setHealth(data?.health || "ok");
+        setPlan(Array.isArray(data?.currentPlan) ? data.currentPlan : mockPlan);
+
         const tariffJson = tRes && tRes.ok ? await tRes.json().catch(() => null) : null;
-        const applJson = aRes && aRes.ok ? await aRes.json().catch(() => null) : null;
         setTariff(tariffJson || mockTariffs);
+
+        const applJson = aRes && aRes.ok ? await aRes.json().catch(() => null) : null;
         const normAppl = normalizeAppliances(applJson);
         setAppliances(normAppl.length ? normAppl : mockAppliances);
-        */
-        
-        // Mock billing data
-        setBill({ monthlyEstLKR: 4200, todaySavedLKR: 125 });
+
+        const billJson = bRes && bRes.ok ? await bRes.json().catch(() => null) : null;
+        setBill(billJson || { estimatedCostLKR: 4200, note: "mock" });
       } catch (e) {
         if (cancelled) return;
         setError(e.message || String(e)); setPlan(mockPlan); setTariff(mockTariffs); setAppliances(mockAppliances);
-      } finally { if (!cancelled) setLoading(false); }
+  } finally { if (!cancelled) setDataLoading(false); }
     }
     load(); return () => { cancelled = true; };
   }, [userId, date]);
@@ -173,6 +228,18 @@ export default function LankaWattWiseApp() {
                 <option value="bakery">Bakery (demo)</option>
               </select>
             </div>
+            <div className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-300 dark:border-slate-700">
+              <User className="w-4 h-4 text-slate-500" />
+              <span className="text-sm text-slate-600 dark:text-slate-400">{user?.email}</span>
+              <button 
+                onClick={logout}
+                className="flex items-center gap-1 px-2 py-1 text-sm text-slate-600 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Sign out</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -186,7 +253,7 @@ export default function LankaWattWiseApp() {
           <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>{tariff ? <TariffBar windows={normalizeWindows(tariff)} /> : <div className="text-slate-500">Loading...</div>}</Section>
           <Section title="Bill Preview" icon={Receipt}>
             {bill ? (
-              <div className="text-sm text-slate-600">For 200 kWh: <b>{fmtMoneyLKR(Math.round((bill.estimatedCostLKR || 0)))}</b> <span className="text-slate-500">{bill.note || ""}</span></div>
+              <div className="text-sm text-slate-600">For 200 kWh: <b>{fmtMoneyLKR(Math.round((bill.monthlyEstLKR || bill.estimatedCostLKR || 0)))}</b> <span className="text-slate-500">{bill.note || ""}</span></div>
             ) : (
               <div className="text-slate-500">Loading...</div>
             )}
@@ -202,8 +269,8 @@ export default function LankaWattWiseApp() {
               if (j?.plan) setPlan(j.plan);
             }}><RefreshCcw className="w-4 h-4" /> Optimize</button>
           </div>}>
-            {loading && (<div className="flex items-center gap-3 text-slate-500"><Loader2 className="w-4 h-4 animate-spin"/> Loading plan...</div>)}
-            {!loading && (
+            {dataLoading && (<div className="flex items-center gap-3 text-slate-500"><Loader2 className="w-4 h-4 animate-spin"/> Loading plan...</div>)}
+            {!dataLoading && (
               <div className="space-y-3">
                 <AnimatePresence>
                   {planWithAppliance.map((rec) => (

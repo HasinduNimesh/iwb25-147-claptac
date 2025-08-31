@@ -10,7 +10,8 @@ $files = @(
     "ui_gateway.bal",
     "config_service.bal",
     "billing_service.bal",
-    "scheduler_service.bal"
+    "scheduler_service.bal",
+    "auth_service.bal"
 )
 
 foreach ($f in $files) {
