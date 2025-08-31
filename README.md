@@ -1,55 +1,98 @@
 # LankaWattWise
 
-Ontology-driven energy advice for Sri Lanka, powered by Ballerina microservices.
+Ontology‑driven energy advice for Sri Lanka, powered by Ballerina microservices with a React web app.
 
-## Features
-- Sri Lanka-specific tariffs, appliances, and solar context
-- Explainable AI: every recommendation cites ontology rules
-- Works with smart plugs (MQTT) or manual entry
-- Modular Ballerina services: IoT ingest, tariff context, ontology proxy, advice engine, API gateway, notifications
-- GraphQL and REST APIs for web/mobile
+## What’s included
+- Sri Lanka‑specific tariffs, appliances, and solar context
+- Explainable advice (each recommendation can cite ontology rules)
+- MQTT ingest (smart plugs) or manual usage
+- Modular Ballerina services: IoT ingest, tariff context, ontology proxy, advice engine, API gateway, notifications, config, billing, scheduler, auth, UI gateway
+- GraphQL + REST APIs, plus a modern React UI (Vite)
 
-## Quick Start
-1. `cd deploy && docker-compose up` (starts Fuseki, MQTT, and API Gateway)
-2. Run Ballerina modules from `ballerina/` for local dev
-3. Web app: see `webapp/`
+## Services and ports
+- UI gateway: http://localhost:9080
+- GraphQL API: http://localhost:9090 (health: http://localhost:9091/healthz)
+- Auth service: http://localhost:8087 (health: http://localhost:8087/auth/health)
+- Config service: http://localhost:8090
+- Tariff: 8081, Ontology: 8082, Advice: 8083, Billing: 8091, Scheduler: 8092
+- Dependencies: Fuseki (SPARQL) on 3030, MQTT on 1883 (via Docker Compose)
 
-## Run UI + Services locally
-1) Build the React UI
-- Open a terminal in `webapp/` and run:
-	- `npm install`
-	- `npm run build`
-- This produces `webapp/dist` which the UI gateway will serve.
+## Prerequisites
+- Windows PowerShell or your shell of choice
+- Docker Desktop
+- Node.js 18+ and npm
+- Ballerina (Swan Lake)
 
-2) Start Ballerina app
-- From `ballerina/`, run `bal run` (or `./run-all.ps1` on Windows to start each service in its own terminal).
-- The UI gateway listens on http://localhost:9080 and proxies:
-	- POST /graphql and /gql -> API Gateway (GraphQL)
-	- GET  /tariff/windows -> Tariff Context
-	- GET  /ontology/appliances -> Ontology Proxy
-	- GET  /advice/plan -> Advice Engine
-	- GET  /billing/* -> Billing Service
-	- POST /scheduler/optimize -> Scheduler Service
+## Quick start (developer workflow)
+1) Start dependencies (Fuseki, MQTT)
+```powershell
+Set-Location -Path .\deploy
+docker compose up -d fuseki mqtt
+```
 
-3) Open the UI at http://localhost:9080
-If backend services are offline, the UI falls back to mock data.
+2) Start backend (all Ballerina services in one process)
+```powershell
+Set-Location -Path .\ballerina
+bal run
+# keep this terminal open (foreground)
+```
+Verify health in another terminal (optional):
+```powershell
+(Invoke-WebRequest -UseBasicParsing http://localhost:8087/auth/health).Content
+(Invoke-WebRequest -UseBasicParsing http://localhost:9091/healthz).Content
+(Invoke-WebRequest -UseBasicParsing http://localhost:9080/).StatusCode
+```
 
-Notes
-- The UI normalizes tariff windows and ontology appliances so all controls render regardless of minor schema differences.
-- GraphQL mutations `accept` and `dismiss` are implemented as simple acknowledgments for the UI.
+3) Start the web app (Vite dev server with proxy)
+```powershell
+Set-Location -Path .\webapp
+npm install
+npm run dev
+# open http://localhost:5173
+```
+- Dev proxy (from `vite.config.js`) routes API calls to backend:
+	- /graphql, /gql, /tariff, /ontology, /advice, /config, /billing, /scheduler -> http://localhost:9080
+	- /auth -> http://localhost:8087
 
-## Repo Structure
+4) First‑run flow
+- Sign up, then log in.
+- After login, the HomeEnergy Coach wizard will collect tariff, appliances, CO₂ model, and solar.
+
+## Alternative: serve built UI from the UI gateway
+If you prefer not to run Vite:
+```powershell
+Set-Location -Path .\webapp
+npm install
+npm run build   # outputs to webapp/dist
+
+Set-Location -Path ..\ballerina
+bal run         # keep running
+# then visit http://localhost:9080
+```
+
+## Troubleshooting
+- Login/network errors (ECONNREFUSED):
+	- Ensure the Ballerina process is running in the foreground and stays open (`bal run`).
+	- Check health: http://localhost:8087/auth/health, http://localhost:9091/healthz, and UI gateway at http://localhost:9080/.
+	- Confirm no other app is using these ports; restart if needed.
+	- Firewall/VPN can block localhost ports; temporarily disable or allow.
+- White screen after login: refresh. The UI includes an error boundary and verified hook order. If it persists, stop Vite and re‑start `npm run dev`.
+- Fuseki/MQTT missing: re‑run `docker compose up -d fuseki mqtt` in `deploy/`.
+
+## Repo structure
 ```
 lankawattwise/
-├─ ballerina/           # Ballerina services & modules
+├─ ballerina/           # Ballerina services & modules (run with `bal run`)
 ├─ ontology/            # OWL, seed data, SPARQL queries
 ├─ data/                # Tariffs, sample telemetry
 ├─ deploy/              # Docker Compose, k8s, env
 ├─ docs/                # Architecture, API, ontology docs
-├─ webapp/              # Frontend (GraphQL client)
+├─ webapp/              # React app (Vite); dev at :5173, build to dist/
 └─ README.md
 ```
 
-## MVP Scope
-- Ontology v0, Ballerina API skeletons, sample data, Docker Compose
-- Extend with rules, optimizer, and UI as you go!
+## Notes
+- GraphQL is available via the UI gateway at `/graphql` (or `/gql`).
+- The UI gateway also proxies REST endpoints under `/tariff`, `/ontology`, `/advice`, `/config`, `/billing`, `/scheduler`.
+- Auth endpoints are under `/auth` and are proxied in dev directly to the auth service.
+
