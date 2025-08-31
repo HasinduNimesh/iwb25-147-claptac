@@ -71,6 +71,15 @@ service / on new http:Listener(port_ui) {
     return check r.getJsonPayload();
   }
 
+  // Simple acks for UI actions (accept/dismiss recommendation)
+  resource function post advice/accept(@http:Payload json body) returns json|error {
+    // no-op; return ok=true to acknowledge
+    return { ok: true };
+  }
+  resource function post advice/dismiss(@http:Payload json body) returns json|error {
+    return { ok: true };
+  }
+
   resource function post config/tariff(string userId, @http:Payload json body) returns json|error {
     http:Response r = check configC->post(string `/config/tariff?userId=${userId}`, body);
     return check r.getJsonPayload();

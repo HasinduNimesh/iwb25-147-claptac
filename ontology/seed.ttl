@@ -11,5 +11,25 @@
   :hasFlexibility "shiftable" ;
   :dutyCycle "0.5"^^xsd:float .
 
+:BedroomAC a :Appliance ;
+  :hasLoadProfile :ACProfile ;
+  :requiresMinDailyRuntime "0"^^xsd:int ;
+  :maxDeferralMinutes "60"^^xsd:int ;
+  :belongsTo :PremisesA .
+
+:ACProfile a :LoadProfile ;
+  :hasFlexibility "thermalStorage" ;
+  :dutyCycle "0.7"^^xsd:float .
+
+:WashingMachine a :Appliance ;
+  :hasLoadProfile :WashingProfile ;
+  :requiresMinDailyRuntime "0"^^xsd:int ;
+  :maxDeferralMinutes "180"^^xsd:int ;
+  :belongsTo :PremisesA .
+
+:WashingProfile a :LoadProfile ;
+  :hasFlexibility "shiftable" ;
+  :dutyCycle "0.3"^^xsd:float .
+
 :TOU_Peak a :TimeOfUseWindow ; :label "Peak" .
 :TariffD a :TariffPlan ; :hasWindow :TOU_Peak .

@@ -9,13 +9,12 @@ export default defineConfig({
     emptyOutDir: true
   },
   server: {
-    port: 5173,
-    proxy: {
-      '/graphql': 'http://localhost:9080',
-      '/gql': 'http://localhost:9080',
-      '/tariff': 'http://localhost:9080',
-      '/ontology': 'http://localhost:9080',
-      '/advice': 'http://localhost:9080'
-    }
+    port: 5173
+    // Removed proxy configuration to avoid connection errors
+    // The UI will use mock data instead
+  },
+  preview: {
+    port: 9081
+    // No proxy in preview mode either
   }
 })

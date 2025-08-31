@@ -15,8 +15,9 @@ final http:Client fuseki = checkpanic new (fuseki_baseUrl, { timeout: 5, httpVer
 
 service /ontology on new http:Listener(port_ontology) {
     resource function get appliances(string userId) returns Appliance[]|error {
-        // Query Fuseki SPARQL endpoint using application/x-www-form-urlencoded and Accept JSON
-        string query = "SELECT ?id ?label ?flex WHERE { ?s a <http://example.org/Appliance> ; <http://www.w3.org/2000/01/rdf-schema#label> ?label ; <http://example.org/flexibility> ?flex . BIND(?s AS ?id) } LIMIT 5";
+        // Query Fuseki SPARQL endpoint using the correct ontology namespace
+        string query = "PREFIX : <http://lankawattwise.org/ontology#> SELECT ?appliance ?flexibility WHERE { ?appliance a :Appliance ; :hasLoadProfile ?profile . ?profile :hasFlexibility ?flexibility . } LIMIT 10";
+        log:printInfo("Executing SPARQL query: " + query);
         http:Request req = new;
         req.setHeader("Accept", "application/sparql-results+json");
         req.setHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -25,8 +26,11 @@ service /ontology on new http:Listener(port_ontology) {
         json j;
         // Use try-catch to avoid bubbling transport errors
         do {
+            log:printInfo("Sending request to Fuseki...");
             http:Response httpResp = check fuseki->post("/query", req);
+            log:printInfo("Received response from Fuseki, status: " + httpResp.statusCode.toString());
             j = check httpResp.getJsonPayload();
+            log:printInfo("Response JSON: " + j.toString());
         } on fail var e {
             log:printWarn("Fuseki request failed: " + e.message());
             return [{ id: "pump-1", label: "Well Pump", flexibility: "shiftable" }, { id: "ac-1", label: "Bedroom AC", flexibility: "thermalStorage" }];
@@ -40,21 +44,41 @@ service /ontology on new http:Listener(port_ontology) {
                     Appliance[] out = [];
                     foreach json b in bindingsJ {
                         map<json> bm = <map<json>>b;
-                        string id = "pump-1";
-                        string label = "Well Pump";
-                        string flex = "shiftable";
-                        if bm.hasKey("id") {
-                            map<json> im = <map<json>>bm["id"];
-                            id = <string>(im.get("value") ?: id);
+                        string id = "unknown-appliance";
+                        string label = "Unknown Appliance";
+                        string flex = "nonShiftable";
+                        
+                        // Extract appliance URI as ID
+                        if bm.hasKey("appliance") {
+                            map<json> applMap = <map<json>>bm["appliance"];
+                            string applianceUri = <string>(applMap.get("value") ?: id);
+                            // Extract the local name from the URI for a cleaner ID
+                            int? hashIndex = applianceUri.lastIndexOf("#");
+                            int? slashIndex = applianceUri.lastIndexOf("/");
+                            int maxIndex = -1;
+                            if hashIndex is int && slashIndex is int {
+                                maxIndex = hashIndex > slashIndex ? hashIndex : slashIndex;
+                            } else if hashIndex is int {
+                                maxIndex = hashIndex;
+                            } else if slashIndex is int {
+                                maxIndex = slashIndex;
+                            }
+                            
+                            if maxIndex >= 0 && maxIndex < applianceUri.length() - 1 {
+                                id = applianceUri.substring(maxIndex + 1);
+                                label = id.length() > 0 ? id : label;
+                            } else {
+                                id = applianceUri;
+                                label = id;
+                            }
                         }
-                        if bm.hasKey("label") {
-                            map<json> lm = <map<json>>bm["label"];
-                            label = <string>(lm.get("value") ?: label);
+                        
+                        // Extract flexibility from profile
+                        if bm.hasKey("flexibility") {
+                            map<json> flexMap = <map<json>>bm["flexibility"];
+                            flex = <string>(flexMap.get("value") ?: flex);
                         }
-                        if bm.hasKey("flex") {
-                            map<json> fm = <map<json>>bm["flex"];
-                            flex = <string>(fm.get("value") ?: flex);
-                        }
+                        
                         out.push({ id, label, flexibility: flex });
                     }
                     if out.length() > 0 { return out; }
