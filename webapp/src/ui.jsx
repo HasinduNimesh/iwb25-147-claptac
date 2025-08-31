@@ -39,9 +39,9 @@ function computeBillPreviewFromTariff(tariff, monthlyKWh = 150) {
     if (tariff.tariffType === 'TOU') {
       const ws = Array.isArray(tariff.windows) ? tariff.windows : [];
       if (ws.length === 0) return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * 45) / 1000, note: 'Local estimate (TOU default)' };
-      const avg = ws.reduce((s, w) => s + Number(w.rateLKR || 0), 0) / ws.length;
-      const fixed = Number(tariff.fixedLKR || 0);
-      return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * avg) / 1000 + fixed, note: 'Local estimate (TOU avg + fixed)' };
+  const avg = ws.reduce((s, w) => s + Number(w.rateLKR || 0), 0) / ws.length;
+  const fixed = Number(tariff.fixedLKR || 0);
+  return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * avg) + fixed, note: 'Local estimate (TOU avg + fixed)' };
     }
     if (tariff.tariffType === 'BLOCK') {
       const blocks = Array.isArray(tariff.blocks) ? tariff.blocks : [];
@@ -53,7 +53,7 @@ function computeBillPreviewFromTariff(tariff, monthlyKWh = 150) {
         const upper = Number(b.uptoKWh || 0);
         const span = Math.max(0, upper - prev);
         const inBand = Math.max(0, Math.min(energy, span));
-        cost += (inBand * Number(b.rateLKR || 0)) / 1000;
+  cost += (inBand * Number(b.rateLKR || 0));
         energy -= inBand; prev = upper; lastRate = b;
         if (energy <= 0) break;
       }
@@ -69,8 +69,8 @@ function computeProjectionFromConfig(co2Cfg, tariff, eomKWh = 150) {
   try {
     const ef = Number(co2Cfg?.defaultKgPerKWh ?? 0.53);
     const totalCO2Kg = eomKWh * ef; // kg
-    const bill = computeBillPreviewFromTariff(tariff, eomKWh);
-    const totalCostRs = bill ? bill.estimatedCostLKR : (eomKWh * 45) / 1000;
+  const bill = computeBillPreviewFromTariff(tariff, eomKWh);
+  const totalCostRs = bill ? bill.estimatedCostLKR : (eomKWh * 45);
     const treesRequired = (totalCO2Kg * 12) / 22; // 22 kg per tree per year
     return { totalKWh: eomKWh, totalCostRs, totalCO2Kg, treesRequired };
   } catch {}
@@ -418,7 +418,15 @@ function DashboardApp({ user, onLogout }) {
           <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>{tariff ? <TariffBar windows={normalizeWindows(tariff)} /> : <div className="text-slate-500">Configure your tariff in the Coach.</div>}</Section>
           <Section title="Bill Preview" icon={Receipt}>
             {bill ? (
-              <div className="text-sm text-slate-600">For 150 kWh: <b>{fmtMoneyLKR(Math.round((bill.monthlyEstLKR || bill.estimatedCostLKR || 0)))}</b> <span className="text-slate-500">{bill.note || ""}</span></div>
+              <div className="text-sm text-slate-600">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2 py-0.5 rounded-full border {bill?.note?.toLowerCase?.().includes('local') ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-emerald-300 bg-emerald-50 text-emerald-700'}">
+                    {bill?.note?.toLowerCase?.().includes('local') ? 'Local estimate' : 'Live'}
+                  </span>
+                  <span>For 150 kWh: <b>{fmtMoneyLKR(Math.round((bill.monthlyEstLKR || bill.estimatedCostLKR || 0)))}</b></span>
+                </div>
+                <div className="text-slate-500">{bill.note || ''}</div>
+              </div>
             ) : (
               <div className="text-slate-500">No bill estimate yet. Complete the Coach to set your plan.</div>
             )}
@@ -432,6 +440,9 @@ function DashboardApp({ user, onLogout }) {
               const treeCount = Math.min(trees, 24);
               return (
                 <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/20 p-4">
+                  <div className="mb-1">
+                    <span className="text-xs px-2 py-0.5 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-700">{bill?.note?.toLowerCase?.().includes('local') ? 'Local estimate' : 'Live'}</span>
+                  </div>
                   <div className="flex items-center gap-3">
                     <Leaf className="w-6 h-6 text-emerald-600 dark:text-emerald-300" />
                     <div>

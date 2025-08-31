@@ -49,7 +49,7 @@ service /billing on new http:Listener(port_billing) {
             decimal spanD = <decimal>span;
             decimal inBand = energy > spanD ? spanD : energy;
             if inBand < <decimal>0 { inBand = <decimal>0; }
-            cost += (inBand * r.rate) / <decimal>1000.0;
+            cost += (inBand * r.rate);
             // Determine next threshold only once: first upper > monthlyKWh
             if nextThreshold == 2147483647 && <decimal>upper > monthlyKWh { nextThreshold = upper; }
             energy -= inBand;
@@ -71,7 +71,7 @@ service /billing on new http:Listener(port_billing) {
                 decimal avg = 0.0; int n = 0;
                 foreach var b in tp.bands { avg += b.rate; n += 1; }
                 decimal rate = n > 0 ? avg / n : 45.0;
-                return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * rate) / <decimal>1000.0 + tp.fixed, note: "TOU avg(rate)+fixed" };
+                return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * rate) + tp.fixed, note: "TOU avg(rate)+fixed" };
             } else {
                 BlockPlan bp = plan?.block ?: { thresholds: [30,60,90,120,180], rates: [] };
                 // Copy and sort rates by fromKWh
@@ -105,7 +105,7 @@ service /billing on new http:Listener(port_billing) {
                     decimal spanD = <decimal>span;
                     decimal inBand = energy > spanD ? spanD : energy;
                     if inBand < <decimal>0 { inBand = <decimal>0; }
-                    cost += (inBand * r.rate) / <decimal>1000.0;
+                    cost += (inBand * r.rate);
                     energy -= inBand;
                     prev = upper;
                     lastRate = r;
@@ -124,15 +124,15 @@ service /billing on new http:Listener(port_billing) {
                 TOUWindow[] ws = (t?.windows ?: []);
                 foreach var w in ws { avg += w.rateLKR; n += 1; }
         decimal rate = n > 0 ? avg / n : 50.0;
-        return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * rate) / <decimal>1000.0, note: "TOU average rate used" };
+    return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * rate), note: "TOU average rate used" };
             } else {
                 decimal rate = 50.0;
                 BlockBand[] bs = (t?.blocks ?: []);
                 foreach var b in bs { rate = b.rateLKR; }
-        return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * rate) / <decimal>1000.0, note: "Block highest band rate used" };
+    return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * rate), note: "Block highest band rate used" };
             }
         }
-    return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * 45.0) / <decimal>1000.0, note: "No tariff set; default rate" };
+    return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * 45.0), note: "No tariff set; default rate" };
     }
 
     resource function get preview(string userId, decimal monthlyKWh = 150) returns BillPreview|error {
