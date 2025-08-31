@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import defaultTariff from './defaultTariff.json';
 
 function StepHeader({ title, subtitle }) {
   return (
@@ -32,8 +33,29 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
 
   // State for steps
   const [tariffType, setTariffType] = useState('TOU');
-  const [blockRates, setBlockRates] = useState({ r0_30: '', r31_60: '', r61_90: '', r91_120: '', r121_180: '', r180p: '', fixed: '', startDate: '', usedUnits: '' });
-  const [touRates, setTouRates] = useState({ offpeak: '25', day: '45', peak: '70', fixed: '0' });
+  // Prefill defaults from bundled national tariff sheet
+  const domestic = defaultTariff?.Domestic || {};
+  const blockT = domestic.BlockTariff || {};
+  const touT = domestic.TimeOfUse || {};
+  const defaultBlockRates = {
+    r0_30: String(blockT['0-30']?.energyCharge_LKR_per_kWh ?? ''),
+    r31_60: String(blockT['31-60']?.energyCharge_LKR_per_kWh ?? ''),
+    r61_90: String(blockT['61-90']?.energyCharge_LKR_per_kWh ?? ''),
+    r91_120: String(blockT['91-120']?.energyCharge_LKR_per_kWh ?? ''),
+    r121_180: String(blockT['121-180']?.energyCharge_LKR_per_kWh ?? ''),
+    r180p: String(blockT['Above180']?.energyCharge_LKR_per_kWh ?? ''),
+    fixed: '', // will derive from usedUnits when user enters consumption
+    startDate: '',
+    usedUnits: ''
+  };
+  const defaultTouRates = {
+    offpeak: String(touT.OffPeak?.energyCharge_LKR_per_kWh ?? ''),
+    day: String(touT.Day?.energyCharge_LKR_per_kWh ?? ''),
+    peak: String(touT.Peak?.energyCharge_LKR_per_kWh ?? ''),
+    fixed: String(touT.fixedCharge_LKR_per_month ?? '')
+  };
+  const [blockRates, setBlockRates] = useState(defaultBlockRates);
+  const [touRates, setTouRates] = useState(defaultTouRates);
   const [appliances, setAppliances] = useState([{ name: 'Washing Machine', watts: 500, minutes: 60, earliest: '06:00', latest: '22:00', perWeek: 3 }]);
   const [co2Mode, setCo2Mode] = useState('default'); // default | constant | profile
   const [co2Constant, setCo2Constant] = useState('0.53');
@@ -239,21 +261,37 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
             {tariffType === 'BLOCK' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="text-sm">Billing cycle start date</label><input type="date" className="w-full border rounded px-2 py-1" value={blockRates.startDate} onChange={e=>setBlockRates({...blockRates, startDate:e.target.value})}/></div>
-                <div><label className="text-sm">Used units this month</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.usedUnits} onChange={e=>setBlockRates({...blockRates, usedUnits:e.target.value})}/></div>
-                <div><label className="text-sm">0–30 Rs/kWh</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r0_30} onChange={e=>setBlockRates({...blockRates, r0_30:e.target.value})}/></div>
-                <div><label className="text-sm">31–60</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r31_60} onChange={e=>setBlockRates({...blockRates, r31_60:e.target.value})}/></div>
-                <div><label className="text-sm">61–90</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r61_90} onChange={e=>setBlockRates({...blockRates, r61_90:e.target.value})}/></div>
-                <div><label className="text-sm">91–120</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r91_120} onChange={e=>setBlockRates({...blockRates, r91_120:e.target.value})}/></div>
-                <div><label className="text-sm">121–180</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r121_180} onChange={e=>setBlockRates({...blockRates, r121_180:e.target.value})}/></div>
-                <div><label className="text-sm">180+</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r180p} onChange={e=>setBlockRates({...blockRates, r180p:e.target.value})}/></div>
-                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (Rs)</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.fixed} onChange={e=>setBlockRates({...blockRates, fixed:e.target.value})}/></div>
+                <div><label className="text-sm">Used units this month</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.usedUnits} onChange={e=>{
+                  const used = e.target.value;
+                  // derive fixed charge from national tariff table
+                  const u = Number(used);
+                  let fixed = '';
+                  if (Number.isFinite(u)) {
+                    if (u <= 30) fixed = String(blockT['0-30']?.fixedCharge_LKR_per_month ?? '');
+                    else if (u <= 60) fixed = String(blockT['31-60']?.fixedCharge_LKR_per_month ?? '');
+                    else if (u <= 90) fixed = String(blockT['61-90']?.fixedCharge_LKR_per_month ?? '');
+                    else if (u <= 120) fixed = String(blockT['91-120']?.fixedCharge_LKR_per_month ?? '');
+                    else if (u <= 180) fixed = String(blockT['121-180']?.fixedCharge_LKR_per_month ?? '');
+                    else fixed = String(blockT['Above180']?.fixedCharge_LKR_per_month ?? '');
+                  }
+                  setBlockRates({...blockRates, usedUnits: used, fixed});
+                }}/></div>
+                <div><label className="text-sm">0–30 Rs/kWh</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.r0_30} /></div>
+                <div><label className="text-sm">31–60</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.r31_60} /></div>
+                <div><label className="text-sm">61–90</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.r61_90} /></div>
+                <div><label className="text-sm">91–120</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.r91_120} /></div>
+                <div><label className="text-sm">121–180</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.r121_180} /></div>
+                <div><label className="text-sm">180+</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.r180p} /></div>
+                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (auto) Rs</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.fixed} /></div>
+                <div className="sm:col-span-2 text-xs text-slate-500">Current national rates are pre-filled and locked. Enter only your billing start date and units used so far.</div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="text-sm">Off-peak (22:30–05:30) Rs/kWh</label><input type="number" className="w-full border rounded px-2 py-1" value={touRates.offpeak} onChange={e=>setTouRates({...touRates, offpeak:e.target.value})}/></div>
-                <div><label className="text-sm">Day (05:30–18:30)</label><input type="number" className="w-full border rounded px-2 py-1" value={touRates.day} onChange={e=>setTouRates({...touRates, day:e.target.value})}/></div>
-                <div><label className="text-sm">Peak (18:30–22:30)</label><input type="number" className="w-full border rounded px-2 py-1" value={touRates.peak} onChange={e=>setTouRates({...touRates, peak:e.target.value})}/></div>
-                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (Rs)</label><input type="number" className="w-full border rounded px-2 py-1" value={touRates.fixed} onChange={e=>setTouRates({...touRates, fixed:e.target.value})}/></div>
+                <div><label className="text-sm">Off-peak (22:30–05:30) Rs/kWh</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.offpeak} /></div>
+                <div><label className="text-sm">Day (05:30–18:30)</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.day} /></div>
+                <div><label className="text-sm">Peak (18:30–22:30)</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.peak} /></div>
+                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (Rs)</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.fixed} /></div>
+                <div className="sm:col-span-2 text-xs text-slate-500">Time-of-use rates are loaded from the current national tariff and cannot be edited.</div>
               </div>
             )}
             <div className="mt-4 flex justify-end">

@@ -1,4 +1,6 @@
-# General
+############################################
+# Global / OS noise
+############################################
 *.log
 *.tmp
 *.temp
@@ -7,51 +9,97 @@
 .DS_Store
 Thumbs.db
 Desktop.ini
+$RECYCLE.BIN/
 
-# VS Code
+############################################
+# Editors / IDEs
+############################################
 .vscode/
 .history/
+.idea/
+*.iml
+*.classpath
+*.project
 
-# Environment files
+############################################
+# Environment & secrets (keep env.example etc.)
+############################################
 .env
 **/.env
 **/.env.*
 deploy/.env
+webapp/.env
+webapp/.env.*
 
-# Ballerina build artifacts
+############################################
+# Ballerina / Build artifacts
+############################################
 ballerina/target/
 **/target/
 **/.ballerina/
+# Auto-generated dependency graph (let build regenerate)
+ballerina/Dependencies.toml
 
-# Java/JARs (generated)
+############################################
+# Java / JVM outputs
+############################################
 **/*.jar
+**/*.class
 
-# Node / Webapp
+############################################
+# Node / Frontend build + caches
+############################################
 webapp/node_modules/
 webapp/dist/
 webapp/.vite/
 webapp/.parcel-cache/
 webapp/.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 webapp/npm-debug.log*
 webapp/yarn-debug.log*
 webapp/yarn-error.log*
 webapp/pnpm-debug.log*
+**/.eslintcache
 
-# Frontend envs
-webapp/.env
-webapp/.env.*
-
-# Docker
+############################################
+# Docker / Compose local only artifacts
+############################################
 **/.dockerignore.local
 .docker/
+deploy/docker-compose.override.yml
+deploy/docker-compose.local.yml
 
-# OS-specific
-$RECYCLE.BIN/
+############################################
+# Kubernetes (generated)
+############################################
+deploy/k8s/generated/
+deploy/k8s/**/generated-*.yaml
 
-# Build outputs (misc)
+############################################
+# Coverage / test output
+############################################
+coverage/
+**/.nyc_output/
+
+############################################
+# Generic build outputs (misc tooling)
+############################################
 **/out/
 **/build/
 
-# Coverage
-coverage/
-**/.nyc_output/
+############################################
+# Logs directories
+############################################
+logs/
+**/logs/
+
+############################################
+# Local configuration overrides (do not commit)
+############################################
+**/Config.local.toml
+**/Config.*.local.toml
+**/*.override.toml
+/ballerina/target
