@@ -158,6 +158,10 @@ service / on new http:Listener(port_ui) {
     http:Response r = check configC->get(string `/config/co2?userId=${userId}`);
     return check r.getJsonPayload();
   }
+  resource function get config/tasks(string userId) returns json|error {
+    http:Response r = check configC->get(string `/config/tasks?userId=${userId}`);
+    return check r.getJsonPayload();
+  }
   resource function get config/solar(string userId) returns json|error {
     http:Response r = check configC->get(string `/config/solar?userId=${userId}`);
     return check r.getJsonPayload();
@@ -170,6 +174,11 @@ service / on new http:Listener(port_ui) {
 
   resource function get billing/projection(string userId, decimal eomKWh = 150) returns json|error {
     http:Response r = check billingC->get(string `/billing/projection?userId=${userId}&eomKWh=${eomKWh}`);
+    return check r.getJsonPayload();
+  }
+
+  resource function get billing/blockwarning(string userId, decimal currentKWh, decimal taskKWh) returns json|error {
+    http:Response r = check billingC->get(string `/billing/blockwarning?userId=${userId}&currentKWh=${currentKWh}&taskKWh=${taskKWh}`);
     return check r.getJsonPayload();
   }
 

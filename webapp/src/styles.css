@@ -1,0 +1,35 @@
+/* Global readability fixes for inputs/selects, especially in dark mode */
+:root { color-scheme: light dark; }
+
+input, select, textarea {
+  color: #0f172a; /* slate-900 */
+  background-color: #ffffff; /* white */
+  border-color: #cbd5e1; /* slate-300 */
+}
+
+::placeholder { color: #94a3b8; /* slate-400 */ }
+
+@media (prefers-color-scheme: dark) {
+  input, select, textarea {
+    color: #e2e8f0; /* slate-200 */
+    background-color: #0f172a; /* slate-900 */
+    border-color: #334155; /* slate-700 */
+  }
+  ::placeholder { color: #64748b; /* slate-500 */ }
+}
+
+/* Force a light, high-contrast palette within the Coach modal */
+.coach-light input,
+.coach-light select,
+.coach-light textarea {
+  color: #0f172a !important; /* slate-900 */
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important; /* slate-300 */
+}
+.coach-light label,
+.coach-light .text-slate-600,
+.coach-light .text-slate-500 {
+  color: #475569 !important; /* slate-600 */
+}
+.coach-light .bg-slate-50 { background-color: #f8fafc !important; }
+/* Avoid overriding button colors globally; utility classes (e.g., text-blue-600, text-white) should win */

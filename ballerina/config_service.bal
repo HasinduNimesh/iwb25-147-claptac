@@ -29,6 +29,29 @@ function parseApplianceCfg(map<json> m) returns ApplianceCfg {
     return { id: id, name: name, ratedPowerW: rated, cycleMinutes: minutes, latestFinish: latest, noiseCurfew: curfew };
 }
 
+// Helper to coerce a generic json map into Task with safe defaults
+function parseTask(map<json> m, int i) returns Task {
+    string id = "t" + i.toString();
+    json? jid = m["id"]; if jid is string { id = jid; }
+
+    string applianceId = "unknown";
+    json? ja = m["applianceId"]; if ja is string { applianceId = ja; }
+
+    int duration = 0;
+    json? jd = m["durationMin"]; if jd is int { duration = jd; } else if jd is decimal { duration = <int>jd; }
+
+    string earliest = "06:00";
+    json? je = m["earliest"]; if je is string { earliest = je; }
+
+    string latest = "22:00";
+    json? jl = m["latest"]; if jl is string { latest = jl; }
+
+    int rpw = 1;
+    json? jr = m["repeatsPerWeek"]; if jr is int { rpw = jr; } else if jr is decimal { rpw = <int>jr; }
+
+    return { id, applianceId, durationMin: duration, earliest, latest, repeatsPerWeek: rpw };
+}
+
 public type UpsertResponse record { boolean ok; };
 
 configurable int port_config = 8090;
@@ -51,6 +74,9 @@ service /config on new http:Listener(port_config) {
         CO2Config? c = getCO2(userId);
         if c is CO2Config { return c; }
         return { defaultKgPerKWh: 0.53 };
+    }
+    resource function get tasks(string userId) returns Task[]|error {
+        return getTasks(userId);
     }
     resource function get solar(string userId) returns SolarConfig|error {
         SolarConfig? s = getSolar(userId);
@@ -147,8 +173,19 @@ service /config on new http:Listener(port_config) {
         setDevices(userId, devs);
         return { ok: true };
     }
-    resource function post tasks(string userId, @http:Payload Task[] tasks) returns UpsertResponse|error {
-        setTasks(userId, tasks);
+    resource function post tasks(string userId, @http:Payload json body) returns UpsertResponse|error {
+        Task[] arr = [];
+        if body is json[] {
+            int i = 1;
+            foreach json j in body { if j is map<json> { arr.push(parseTask(j, i)); i += 1; } }
+        } else if body is map<json> {
+            json items = body["items"] ?: [];
+            if items is json[] { int i = 1; foreach json j in items { if j is map<json> { arr.push(parseTask(j, i)); i += 1; } } }
+            else { arr.push(parseTask(body, 1)); }
+        } else {
+            return { ok: false };
+        }
+        setTasks(userId, arr);
         return { ok: true };
     }
     resource function post co2model(string userId, @http:Payload CO2Model m) returns UpsertResponse|error {

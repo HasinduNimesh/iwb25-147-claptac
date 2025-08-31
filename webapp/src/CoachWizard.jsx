@@ -14,7 +14,7 @@ function Nav({ step, setStep, maxStep, onClose }) {
   return (
     <div className="mt-6 flex items-center justify-between">
       <button
-        className="px-3 py-1.5 rounded border text-sm"
+  className="px-3 py-1.5 rounded border border-slate-300 text-sm text-slate-700 bg-white hover:bg-slate-50"
         onClick={() => (step > 1 ? setStep(step - 1) : onClose?.())}
       >
         {step > 1 ? 'Back' : 'Close'}
@@ -24,7 +24,7 @@ function Nav({ step, setStep, maxStep, onClose }) {
   );
 }
 
-export default function CoachWizard({ userId, onComplete, onClose }) {
+export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
   const MAX = 4;
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -56,7 +56,7 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
   };
   const [blockRates, setBlockRates] = useState(defaultBlockRates);
   const [touRates, setTouRates] = useState(defaultTouRates);
-  const [appliances, setAppliances] = useState([{ name: 'Washing Machine', watts: 500, minutes: 60, earliest: '06:00', latest: '22:00', perWeek: 3 }]);
+  const [appliances, setAppliances] = useState([]);
   const [co2Mode, setCo2Mode] = useState('default'); // default | constant | profile
   const [co2Constant, setCo2Constant] = useState('0.53');
   const [co2Profile, setCo2Profile] = useState(''); // 48 comma-separated values
@@ -130,7 +130,8 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
         if (sRes?.ok) {
           const s = await sRes.json().catch(() => null);
           if (s && (s.scheme || s.exportPriceLKR)) {
-            setSolar({ has: true, scheme: s.scheme || 'NET_ACCOUNTING', exportRate: String(s.exportPriceLKR ?? ''), profile: '' });
+            // Prefill values but do not auto-check the box; user must opt-in explicitly
+            setSolar(prev => ({ ...prev, has: false, scheme: s.scheme || 'NET_ACCOUNTING', exportRate: String(s.exportPriceLKR ?? ''), profile: '' }));
           }
         }
         // Fallback from localStorage if nothing came back
@@ -146,7 +147,11 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
               if (cfg?.co2Mode) setCo2Mode(cfg.co2Mode);
               if (cfg?.co2Constant) setCo2Constant(cfg.co2Constant);
               if (cfg?.co2Profile) setCo2Profile(cfg.co2Profile);
-              if (cfg?.solar) setSolar(cfg.solar);
+              if (cfg?.solar) {
+                // Do not auto-check; keep fields prefilled for convenience
+                const { scheme, exportRate, profile } = cfg.solar || {};
+                setSolar({ has: false, scheme: scheme || 'NET_ACCOUNTING', exportRate: String(exportRate ?? ''), profile: profile || '' });
+              }
             } catch {}
           }
         }
@@ -170,7 +175,7 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
           ], fixedLKR: Number(touRates.fixed || 0) };
   const res = await fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const j = res && await res.json().catch(()=>({ ok:false }));
-  if (!res.ok || !j?.ok) throw new Error('Failed to save tariff');
+  if (!res || !res.ok || !j?.ok) throw new Error('Failed to save tariff');
       } else {
         const body = {
           utility: 'CEB', tariffType: 'BLOCK', fixedLKR: Number(blockRates.fixed || 0), billingCycleStart: blockRates.startDate || null, usedUnits: Number(blockRates.usedUnits || 0),
@@ -186,7 +191,7 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
         };
   const res = await fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const j = res && await res.json().catch(()=>({ ok:false }));
-  if (!res.ok || !j?.ok) throw new Error('Failed to save tariff');
+  if (!res || !res.ok || !j?.ok) throw new Error('Failed to save tariff');
       }
       saveLocalConfig();
       setStep(2);
@@ -201,7 +206,22 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
       const items = appliances.map(a => ({ id: a.name.toLowerCase().replace(/\s+/g, ''), name: a.name, ratedPowerW: Number(a.watts||0), cycleMinutes: Number(a.minutes||0), earliestStart: a.earliest, latestFinish: a.latest, runsPerWeek: Number(a.perWeek||0) }));
   const res = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items) });
   const j = res && await res.json().catch(()=>({ ok:false }));
-  if (!res.ok || !j?.ok) throw new Error('Failed to save appliances');
+  if (!res || !res.ok || !j?.ok) throw new Error('Failed to save appliances');
+      // Also persist tasks derived from these appliances so Dashboard "Tasks" stays in sync
+      try {
+        const tasks = appliances
+          .map(a => ({
+            id: a.name.toLowerCase().replace(/\s+/g, ''),
+            applianceId: a.name.toLowerCase().replace(/\s+/g, ''),
+            durationMin: Number(a.minutes || 0),
+            earliest: a.earliest || '06:00',
+            latest: a.latest || '22:00',
+            repeatsPerWeek: Number(a.perWeek || 0),
+          }))
+          .filter(t => (t.repeatsPerWeek || 0) > 0 && (t.durationMin || 0) > 0);
+        await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tasks) }).catch(()=>null);
+  onChange?.('appliances');
+      } catch (_) { /* non-fatal */ }
       saveLocalConfig();
       setStep(3);
     } catch (e) { setError(e.message || String(e)); } finally { setSaving(false); }
@@ -213,16 +233,16 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
       if (co2Mode === 'default') {
   const res = await fetch(`/config/co2?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultKgPerKWh: 0.53 }) });
   const j = res && await res.json().catch(()=>({ ok:false }));
-  if (!res.ok || !j?.ok) throw new Error('Failed to save CO2');
+  if (!res || !res.ok || !j?.ok) throw new Error('Failed to save CO2');
       } else if (co2Mode === 'constant') {
   const res = await fetch(`/config/co2?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultKgPerKWh: Number(co2Constant || 0.53) }) });
   const j = res && await res.json().catch(()=>({ ok:false }));
-  if (!res.ok || !j?.ok) throw new Error('Failed to save CO2');
+  if (!res || !res.ok || !j?.ok) throw new Error('Failed to save CO2');
       } else {
     const values = (co2Profile || '').split(/[\s,]+/).map(Number).filter(v => Number.isFinite(v));
     const res = await fetch(`/config/co2model?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modelType: 'PROFILE_48', profile: values }) });
   const j = res && await res.json().catch(()=>({ ok:false }));
-  if (!res.ok || !j?.ok) throw new Error('Failed to save CO2 model');
+  if (!res || !res.ok || !j?.ok) throw new Error('Failed to save CO2 model');
       }
       saveLocalConfig();
       setStep(4);
@@ -235,18 +255,24 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
       if (solar.has) {
   const res = await fetch(`/config/solar?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scheme: solar.scheme, exportPriceLKR: Number(solar.exportRate||0), dailyProfile: (solar.profile||'').split(/[\s,]+/).map(Number).filter(Number.isFinite) }) });
   const j = res && await res.json().catch(()=>({ ok:false }));
-  if (!res.ok || !j?.ok) throw new Error('Failed to save solar');
+  if (!res || !res.ok || !j?.ok) throw new Error('Failed to save solar');
       }
       saveLocalConfig();
-      localStorage.setItem('coachSetupDone', 'true');
-      onComplete?.();
+      // Mark completed for this user so the Coach won't show again
+      if (userId) {
+        localStorage.setItem(`coachSetupDone:${userId}`, 'true');
+      } else {
+        localStorage.setItem('coachSetupDone', 'true');
+      }
+  onChange?.('complete');
+  onComplete?.();
     } catch (e) { setError(e.message || String(e)); } finally { setSaving(false); }
   }
 
   // UI
   return (
     <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 p-5">
+      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 p-5 coach-light">
         {!loaded && (<div className="mb-3 text-sm text-slate-500">Loading your saved settings…</div>)}
         {step === 1 && (
           <div>
@@ -304,7 +330,12 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
         {step === 2 && (
           <div>
             <StepHeader title="Appliances & Tasks" subtitle="Tell us what you want to track" />
-            <div className="space-y-3 max-h-72 overflow-auto pr-1">
+            <div className="space-y-3 max-h-80 overflow-auto pr-1 pb-2">
+              {appliances.length === 0 && (
+                <div className="text-sm text-slate-500 border rounded p-3 bg-slate-50">
+                  No appliances yet. Use “+ Add appliance” to add your first one.
+                </div>
+              )}
               {appliances.map((a, i) => (
                 <div key={i} className="grid grid-cols-1 sm:grid-cols-6 gap-2 border rounded p-2">
                   <div className="flex flex-col sm:col-span-2">
@@ -335,7 +366,16 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
                 </div>
               ))}
             </div>
-            <div className="mt-2"><button className="text-sm text-blue-600" onClick={()=>setAppliances([...appliances,{ name:'New Appliance', watts: 1000, minutes: 30, earliest:'06:00', latest:'22:00', perWeek:1 }])}>+ Add appliance</button></div>
+            <div className="mt-2">
+              <button
+                type="button"
+                aria-label="Add appliance"
+                className="text-sm text-blue-700 border border-blue-200 rounded px-3 py-1 bg-white hover:bg-blue-50"
+                onClick={()=>setAppliances([...appliances,{ name:'New Appliance', watts: 1000, minutes: 30, earliest:'06:00', latest:'22:00', perWeek:1 }])}
+              >
+                + Add appliance
+              </button>
+            </div>
             <div className="mt-4 flex justify-end">
               <button disabled={saving} onClick={postAppliances} className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60">Save & Continue</button>
             </div>
@@ -345,16 +385,20 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
 
         {step === 3 && (
           <div>
-            <StepHeader title="CO₂ Model" subtitle="Pick a model for greener scheduling" />
+            <StepHeader title="CO₂ Model" subtitle="Pick how we estimate emissions so we can schedule at cleaner times" />
             <div className="space-y-2">
               <label className="flex items-center gap-2"><input type="radio" checked={co2Mode==='default'} onChange={()=>setCo2Mode('default')} /> <span>Use default 0.53 kg/kWh</span></label>
-              <label className="flex items-center gap-2"><input type="radio" checked={co2Mode==='constant'} onChange={()=>setCo2Mode('constant')} /> <span>Use my constant factor</span></label>
+              <div className="text-xs text-slate-600 ml-6">Good starting point. 0.53 kg of CO₂ per kWh is a typical Sri Lanka grid average. Same at all times of day.</div>
+
+              <label className="flex items-center gap-2 mt-2"><input type="radio" checked={co2Mode==='constant'} onChange={()=>setCo2Mode('constant')} /> <span>Use my constant factor</span></label>
+              <div className="text-xs text-slate-600 ml-6">Enter one number in kg/kWh (e.g., 0.50). Lower numbers mean cleaner electricity. Used for all times.</div>
               {co2Mode==='constant' && (
                 <input className="border rounded px-2 py-1" type="number" step="0.01" value={co2Constant} onChange={e=>setCo2Constant(e.target.value)} />
               )}
-              <label className="flex items-center gap-2"><input type="radio" checked={co2Mode==='profile'} onChange={()=>setCo2Mode('profile')} /> <span>Upload a 48-slot daily profile</span></label>
+              <label className="flex items-center gap-2 mt-2"><input type="radio" checked={co2Mode==='profile'} onChange={()=>setCo2Mode('profile')} /> <span>Upload a 48-slot daily profile</span></label>
+              <div className="text-xs text-slate-600 ml-6">Paste 48 numbers (kg/kWh) for each half‑hour starting 00:00 → 24:00. The scheduler will prefer hours with lower values.</div>
               {co2Mode==='profile' && (
-                <textarea className="w-full border rounded p-2" rows={4} placeholder="48 numbers separated by commas or spaces" value={co2Profile} onChange={e=>setCo2Profile(e.target.value)} />
+                <textarea className="w-full border rounded p-2" rows={4} placeholder="Example: 0.6,0.6,0.58,0.55, … (48 values)" value={co2Profile} onChange={e=>setCo2Profile(e.target.value)} />
               )}
             </div>
             <div className="mt-4 flex justify-end">

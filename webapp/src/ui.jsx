@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, Plug, Info, CheckCircle2, XCircle, RefreshCcw, Calendar, Layers, Sparkles, Wifi, Activity, Sun, Moon, Loader2, Settings, Scale, Receipt, LogOut, User } from "lucide-react";
+import { TrendingUp, Plug, Info, CheckCircle2, XCircle, RefreshCcw, Calendar, Layers, Sparkles, Wifi, Activity, Sun, Moon, Loader2, Settings, Scale, Receipt, LogOut, User, Leaf } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useAuth } from './AuthContext.jsx';
 import Login from './Login.jsx';
@@ -31,6 +31,50 @@ function normalizeWindows(input) {
     endTime: w.endTime,
     rateLKR: w.rateLKR != null ? w.rateLKR : (w.rateLKRPerKWh != null ? w.rateLKRPerKWh : 0)
   }));
+}
+// Client-side fallback: estimate monthly bill using tariff config
+function computeBillPreviewFromTariff(tariff, monthlyKWh = 150) {
+  try {
+    if (!tariff || typeof tariff !== 'object') return null;
+    if (tariff.tariffType === 'TOU') {
+      const ws = Array.isArray(tariff.windows) ? tariff.windows : [];
+      if (ws.length === 0) return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * 45) / 1000, note: 'Local estimate (TOU default)' };
+      const avg = ws.reduce((s, w) => s + Number(w.rateLKR || 0), 0) / ws.length;
+      const fixed = Number(tariff.fixedLKR || 0);
+      return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * avg) / 1000 + fixed, note: 'Local estimate (TOU avg + fixed)' };
+    }
+    if (tariff.tariffType === 'BLOCK') {
+      const blocks = Array.isArray(tariff.blocks) ? tariff.blocks : [];
+      let cost = 0; let prev = 0; let energy = Number(monthlyKWh);
+      // sort by uptoKWh
+      const rs = blocks.slice().sort((a, b) => Number(a.uptoKWh||0) - Number(b.uptoKWh||0));
+      let lastRate = null;
+      for (const b of rs) {
+        const upper = Number(b.uptoKWh || 0);
+        const span = Math.max(0, upper - prev);
+        const inBand = Math.max(0, Math.min(energy, span));
+        cost += (inBand * Number(b.rateLKR || 0)) / 1000;
+        energy -= inBand; prev = upper; lastRate = b;
+        if (energy <= 0) break;
+      }
+      const fixed = Number(tariff.fixedLKR || 0);
+      return { estimatedKWh: monthlyKWh, estimatedCostLKR: cost + fixed, note: 'Local estimate (BLOCK tiers + fixed)' };
+    }
+  } catch {}
+  return null;
+}
+
+// Client-side fallback: estimate CO2 projection for the month
+function computeProjectionFromConfig(co2Cfg, tariff, eomKWh = 150) {
+  try {
+    const ef = Number(co2Cfg?.defaultKgPerKWh ?? 0.53);
+    const totalCO2Kg = eomKWh * ef; // kg
+    const bill = computeBillPreviewFromTariff(tariff, eomKWh);
+    const totalCostRs = bill ? bill.estimatedCostLKR : (eomKWh * 45) / 1000;
+    const treesRequired = (totalCO2Kg * 12) / 22; // 22 kg per tree per year
+    return { totalKWh: eomKWh, totalCostRs, totalCO2Kg, treesRequired };
+  } catch {}
+  return null;
 }
 // Normalize appliances returned by ontology service to UI-friendly shape
 // Accepts either:
@@ -96,6 +140,7 @@ function TariffBar({ windows = [] }) {
     return split.sort((a, b) => a.start - b.start);
   }, [windows]);
   const total = 24 * 60; const colorMap = { Peak: "bg-rose-500", Day: "bg-amber-500", "Off-Peak": "bg-emerald-500" };
+
   return (
     <div>
       {(!Array.isArray(windows) || windows.length === 0) && (
@@ -122,10 +167,12 @@ function DashboardApp({ user, onLogout }) {
   const [userId, setUserId] = useState(user?.email || "");
   useEffect(() => { if (user?.email) setUserId(user.email); }, [user?.email]);
   useEffect(() => {
-    // Open the wizard if first time after login
-    const first = localStorage.getItem('coachSetupDone');
-    if (!first) setShowCoach(true);
-  }, []);
+    // Open the wizard the first time for this user only
+    if (!userId) return;
+    const key = `coachSetupDone:${userId}`;
+    const done = localStorage.getItem(key);
+    if (!done) setShowCoach(true);
+  }, [userId]);
   const [date, setDate] = useState(todayISOInColombo());
   const [alpha, setAlpha] = useState(1);
   const [health, setHealth] = useState(false);
@@ -133,10 +180,42 @@ function DashboardApp({ user, onLogout }) {
   const [appliances, setAppliances] = useState([]);
   const [tariff, setTariff] = useState(null);
   const [bill, setBill] = useState(null);
+  const [projection, setProjection] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState("");
   const [accepted, setAccepted] = useState({});
   const [dismissed, setDismissed] = useState({});
+
+  // Reload user-configured appliances and tasks after Coach changes
+  const reloadUserConfig = React.useCallback(async () => {
+    try {
+      const [cfgRes, tasksRes] = await Promise.all([
+        fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null),
+        fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`).catch(() => null),
+      ]);
+      const cfgJson = cfgRes && cfgRes.ok ? await cfgRes.json().catch(() => []) : [];
+      const tasksJson = tasksRes && tasksRes.ok ? await tasksRes.json().catch(() => []) : [];
+      const list = Array.isArray(cfgJson)
+        ? cfgJson.map((x) => ({ id: x.id || x.name, label: x.name || x.id, flexible: !(x.noiseCurfew === true) }))
+        : [];
+      setAppliances(list);
+      const byId = new Map((cfgJson || []).map((a) => [a.id || a.name, a]));
+      const mapped = Array.isArray(tasksJson)
+        ? tasksJson.map((t) => ({
+            id: t.id,
+            applianceId: t.applianceId,
+            watts: Number(byId.get(t.applianceId || '')?.ratedPowerW ?? 600),
+            durationMin: Number(t.durationMin || t.cycleMinutes || 0),
+            earliest: t.earliest || '06:00',
+            latest: t.latest || t.latestFinish || '22:00',
+            repeatsPerWeek: Number(t.repeatsPerWeek || t.runsPerWeek || 1),
+          }))
+        : [];
+      setTasksLocal(mapped);
+    } catch (_) {
+      // ignore transient reload errors
+    }
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,25 +224,68 @@ function DashboardApp({ user, onLogout }) {
       try {
         // Live API calls through UI gateway; prefer user config
         const data = await gql(`query Q($userId:String!, $date:String!) { health currentPlan(userId:$userId, date:$date){ id applianceId suggestedStart durationMinutes reasons estSavingLKR } }`, { userId, date }).catch(() => null);
-        const [tRes, aRes, bRes] = await Promise.all([
+        const [tRes, aRes, bRes, pRes, tasksRes, cfgRes, co2Res] = await Promise.all([
           fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`).catch(() => null),
           fetch(`/ontology/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null),
-          fetch(`/billing/preview?userId=${encodeURIComponent(userId)}&monthlyKWh=150`).catch(() => null)
+          fetch(`/billing/preview?userId=${encodeURIComponent(userId)}&monthlyKWh=150`).catch(() => null),
+          fetch(`/billing/projection?userId=${encodeURIComponent(userId)}&eomKWh=150`).catch(() => null),
+          fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`).catch(() => null),
+          fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null),
+          fetch(`/config/co2?userId=${encodeURIComponent(userId)}`).catch(() => null)
         ]);
         if (cancelled) return;
 
         setHealth(!!data?.currentPlan);
         setPlan(Array.isArray(data?.currentPlan) ? data.currentPlan : []);
 
-        const tariffJson = tRes && tRes.ok ? await tRes.json().catch(() => null) : null;
+  const tariffJson = tRes && tRes.ok ? await tRes.json().catch(() => null) : null;
         setTariff(tariffJson || null);
 
         const applJson = aRes && aRes.ok ? await aRes.json().catch(() => null) : null;
-        const normAppl = normalizeAppliances(applJson);
-        setAppliances(normAppl);
+        const cfgJson = cfgRes && cfgRes.ok ? await cfgRes.json().catch(() => null) : null;
+        const haveCfg = Array.isArray(cfgJson) && cfgJson.length > 0;
+        if (haveCfg) {
+          const list = cfgJson.map(x => ({ id: x.id || x.name, label: x.name || x.id, flexible: !(x.noiseCurfew === true) }));
+          setAppliances(list);
+        } else {
+          // When no user-configured appliances, do not show ontology defaults
+          setAppliances([]);
+        }
 
-        const billJson = bRes && bRes.ok ? await bRes.json().catch(() => null) : null;
-        setBill(billJson || null);
+  const billJson = bRes && bRes.ok ? await bRes.json().catch(() => null) : null;
+  if (billJson) {
+    setBill(billJson);
+  } else {
+    const localBill = computeBillPreviewFromTariff(tariffJson, 150);
+    if (localBill) setBill(localBill);
+  }
+
+  const projJson = pRes && pRes.ok ? await pRes.json().catch(() => null) : null;
+  if (projJson) {
+    setProjection(projJson);
+  } else {
+    const co2Json = co2Res && co2Res.ok ? await co2Res.json().catch(() => null) : null;
+    const localProj = computeProjectionFromConfig(co2Json, tariffJson, 150);
+    if (localProj) setProjection(localProj);
+  }
+
+        // Load tasks if available and map to local shape
+        const tasksJson = tasksRes && tasksRes.ok ? await tasksRes.json().catch(() => null) : null;
+        if (Array.isArray(tasksJson)) {
+          const byId = new Map(((cfgJson||[]) || []).map(a=>[a.id||a.name, a]));
+          const mapped = tasksJson.map(t=>({
+            id: t.id,
+            applianceId: t.applianceId,
+            watts: Number(byId.get(t.applianceId||'')?.ratedPowerW ?? 600),
+            durationMin: Number(t.durationMin||t.cycleMinutes||0),
+            earliest: t.earliest || '06:00',
+            latest: t.latest || t.latestFinish || '22:00',
+            repeatsPerWeek: Number(t.repeatsPerWeek||t.runsPerWeek||1),
+          }));
+          setTasksLocal(mapped);
+        } else {
+          setTasksLocal([]);
+        }
       } catch (e) {
         if (cancelled) return;
         setError(e.message || String(e)); setPlan([]); setTariff(null); setAppliances([]);
@@ -185,6 +307,75 @@ function DashboardApp({ user, onLogout }) {
   const safePlan = Array.isArray(plan) ? plan : [];
   const safeAppliances = Array.isArray(appliances) ? appliances : [];
   const planWithAppliance = safePlan.map((r) => ({ ...r, appliance: safeAppliances.find((a) => a.id === r.applianceId) }));
+
+  // Simple Tasks editor state (local-only list + post to backend)
+  const [tasksLocal, setTasksLocal] = React.useState([]);
+  const [mtdKWh, setMtdKWh] = React.useState(58); // assume recent usage; could be sourced from telemetry later
+  const [bw, setBw] = React.useState(null);
+
+  // Compute kWh for current task input
+  function kwhOf(watts, minutes) {
+    const w = Number(watts||0); const m = Number(minutes||0);
+    return (w/1000) * (m/60);
+  }
+
+  async function saveTasks() {
+    try {
+      const body = tasksLocal.map((t, i)=>({ id: t.id || `t${i+1}`, applianceId: t.applianceId || (safeAppliances[0]?.id||'unknown'), durationMin: Number(t.durationMin||0), earliest: t.earliest||'06:00', latest: t.latest||'22:00', repeatsPerWeek: Number(t.repeatsPerWeek||1) }));
+      await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      // Re-optimize after saving
+      const res = await fetch('/scheduler/optimize', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId, date, alpha }) }).catch(()=>null);
+      const j = res && res.ok ? await res.json().catch(()=>null) : null;
+      if (j?.plan) setPlan(j.plan);
+    } catch {}
+  }
+
+  async function checkBlockWarning(task) {
+    const kw = kwhOf(task.watts, task.durationMin);
+    const res = await fetch(`/billing/blockwarning?userId=${encodeURIComponent(userId)}&currentKWh=${mtdKWh}&taskKWh=${kw}`).catch(()=>null);
+    const j = res && res.ok ? await res.json().catch(()=>null) : null;
+    setBw(j||null);
+  }
+
+  // Persist a shiftable toggle by updating config overrides (noiseCurfew = !flexible)
+  async function persistApplianceFlexible(id, flexible) {
+    try {
+      // Optimistic UI update
+      setAppliances((arr) => arr.map((a) => (a.id === id ? { ...a, flexible } : a)));
+
+      // Get existing overrides
+      const cfgRes = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null);
+      const existing = cfgRes && cfgRes.ok ? await cfgRes.json().catch(() => []) : [];
+
+      // Build next overrides array
+      const byId = new Map();
+      if (Array.isArray(existing)) {
+        for (const it of existing) { if (it && typeof it === 'object') byId.set(it.id || it.name, it); }
+      }
+      const wantId = id;
+      const cur = byId.get(wantId) || {};
+      const label = (safeAppliances.find((a) => a.id === wantId)?.label) || cur.name || wantId;
+      const nextItem = {
+        id: wantId,
+        name: label,
+        ratedPowerW: cur.ratedPowerW ?? 0,
+        cycleMinutes: cur.cycleMinutes ?? 0,
+        latestFinish: cur.latestFinish ?? '22:00',
+        noiseCurfew: !flexible,
+      };
+      byId.set(wantId, nextItem);
+      const next = Array.from(byId.values());
+
+      const res = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next),
+      }).catch(() => null);
+      const ok = !!(res && res.ok);
+      if (!ok) throw new Error('Save failed');
+    } catch (_) {
+      // Revert optimistic change on failure
+      setAppliances((arr) => arr.map((a) => (a.id === id ? { ...a, flexible: !flexible } : a)));
+    }
+  }
 
   return (
     <ErrorBoundary>
@@ -227,9 +418,37 @@ function DashboardApp({ user, onLogout }) {
           <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>{tariff ? <TariffBar windows={normalizeWindows(tariff)} /> : <div className="text-slate-500">Configure your tariff in the Coach.</div>}</Section>
           <Section title="Bill Preview" icon={Receipt}>
             {bill ? (
-              <div className="text-sm text-slate-600">For 200 kWh: <b>{fmtMoneyLKR(Math.round((bill.monthlyEstLKR || bill.estimatedCostLKR || 0)))}</b> <span className="text-slate-500">{bill.note || ""}</span></div>
+              <div className="text-sm text-slate-600">For 150 kWh: <b>{fmtMoneyLKR(Math.round((bill.monthlyEstLKR || bill.estimatedCostLKR || 0)))}</b> <span className="text-slate-500">{bill.note || ""}</span></div>
             ) : (
               <div className="text-slate-500">No bill estimate yet. Complete the Coach to set your plan.</div>
+            )}
+          </Section>
+
+          <Section title="Carbon Offset" icon={Leaf}>
+            {projection ? (()=>{
+              const monthly = Number(projection.totalCO2Kg ?? 0);
+              const annual = monthly * 12;
+              const trees = Math.max(0, Math.ceil(Number(projection.treesRequired ?? (annual/22))));
+              const treeCount = Math.min(trees, 24);
+              return (
+                <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/20 p-4">
+                  <div className="flex items-center gap-3">
+                    <Leaf className="w-6 h-6 text-emerald-600 dark:text-emerald-300" />
+                    <div>
+                      <div className="text-xs text-emerald-700/80 dark:text-emerald-300/80">Estimated trees to offset yearly</div>
+                      <div className="text-3xl font-extrabold text-emerald-700 dark:text-emerald-300">{trees}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-emerald-800/80 dark:text-emerald-200/80">
+                    {monthly.toFixed(1)} kg/mo → {Math.round(annual)} kg/yr → {trees} trees (22 kg/tree/yr)
+                  </div>
+                  <div className="mt-3 grid grid-cols-12 gap-1 select-none" aria-hidden>
+                    {Array.from({length: treeCount}).map((_,i)=> (<div key={i} className="text-base">🌳</div>))}
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="text-slate-500">No CO₂ projection yet. Set your CO₂ model in the Coach or use Quick Setup → Set CO₂ 0.53.</div>
             )}
           </Section>
         </div>
@@ -272,14 +491,58 @@ function DashboardApp({ user, onLogout }) {
             )}
           </Section>
 
+          <Section title="Tasks" icon={Layers}>
+            <div className="text-sm text-slate-600 mb-2">Month-to-date usage: <b>{mtdKWh}</b> kWh</div>
+            {bw && (
+              <div className={`mb-2 p-2 rounded border ${bw.willCross ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                {bw.willCross ? (
+                  <div>You are near the next block (≤ {bw.nextThresholdKWh} kWh). This task would push you over. Δfixed {fmtMoneyLKR(Math.round(bw.deltaFixed||0))}, Δmarginal {fmtMoneyLKR(Math.round(bw.deltaMarginal||0))}.</div>
+                ) : (
+                  <div>No block crossing risk for this task.</div>
+                )}
+              </div>
+            )}
+            <div className="grid gap-2">
+              {tasksLocal.map((t,i)=> (
+                <div key={i} className="flex flex-wrap items-end gap-2 p-3 rounded border">
+                  <div className="flex flex-col">
+                    <label className="text-xs">Appliance</label>
+                    <select className="border rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={t.applianceId||''} onChange={e=>{ const v=[...tasksLocal]; v[i]={...t, applianceId:e.target.value}; setTasksLocal(v); }}>
+                      {safeAppliances.map(a=> (<option key={a.id} value={a.id}>{a.label}</option>))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-xs">Watts</label>
+                    <input className="border rounded px-2 py-1 w-24 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" type="number" value={t.watts||''} onChange={e=>{ const v=[...tasksLocal]; v[i]={...t, watts:e.target.value}; setTasksLocal(v); checkBlockWarning({...t, watts:e.target.value}); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-xs">Duration (min)</label>
+                    <input className="border rounded px-2 py-1 w-24 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" type="number" value={t.durationMin||''} onChange={e=>{ const v=[...tasksLocal]; v[i]={...t, durationMin:e.target.value}; setTasksLocal(v); checkBlockWarning({...t, durationMin:e.target.value}); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-xs">Earliest</label>
+                    <input className="border rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" type="time" value={t.earliest||'06:00'} onChange={e=>{ const v=[...tasksLocal]; v[i]={...t, earliest:e.target.value}; setTasksLocal(v); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-xs">Latest</label>
+                    <input className="border rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" type="time" value={t.latest||'22:00'} onChange={e=>{ const v=[...tasksLocal]; v[i]={...t, latest:e.target.value}; setTasksLocal(v); }} />
+                  </div>
+                  <div className="flex-1" />
+                  <button className="px-3 py-1.5 rounded bg-slate-900 text-white text-sm" onClick={saveTasks}>Save</button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2"><button className="text-sm text-blue-600" onClick={()=>{ setTasksLocal([...tasksLocal, { id:'', applianceId:safeAppliances[0]?.id, watts:600, durationMin:120, earliest:'01:30', latest:'04:00', repeatsPerWeek:1 }]); bw && setBw(null); }}>+ Add task</button></div>
+          </Section>
+
           <Section title="Appliances" icon={Layers}>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {safeAppliances.map((a) => (
+      {safeAppliances.map((a) => (
                 <div key={a.id} className="p-3 rounded-xl border border-slate-200 bg-white/70 flex items-center gap-3">
                   {a.icon ? <a.icon className="w-5 h-5 text-slate-600" /> : <Plug className="w-5 h-5 text-slate-600" />}
                   <div className="flex-1 min-w-0"><div className="font-medium truncate">{a.label}</div><div className="text-xs text-slate-500">{a.flexible ? "Shiftable" : "Non-shiftable"}</div></div>
                   <label className="inline-flex items-center cursor-pointer select-none">
-                    <input type="checkbox" className="sr-only peer" defaultChecked={a.flexible} />
+        <input type="checkbox" className="sr-only peer" checked={!!a.flexible} onChange={(e)=>persistApplianceFlexible(a.id, e.target.checked)} />
                     <div className="w-10 h-6 bg-slate-200 rounded-full peer-checked:bg-emerald-500 relative transition"><div className="w-5 h-5 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:left-4 transition"/></div>
                   </label>
                 </div>
@@ -327,7 +590,12 @@ function DashboardApp({ user, onLogout }) {
   <footer className="max-w-6xl mx-auto p-4 text-xs text-slate-500"><div className="flex items-center gap-2"><Info className="w-4 h-4" /><span>Uses your configured tariff, appliances, CO₂ and solar. If services are offline, some sections may be empty.</span></div></footer>
   </div>
   {showCoach && (
-    <CoachWizard userId={userId} onClose={()=>setShowCoach(false)} onComplete={()=>setShowCoach(false)} />
+    <CoachWizard
+      userId={userId}
+      onClose={() => setShowCoach(false)}
+      onComplete={() => setShowCoach(false)}
+      onChange={() => reloadUserConfig()}
+    />
   )}
   </ErrorBoundary>
   );
