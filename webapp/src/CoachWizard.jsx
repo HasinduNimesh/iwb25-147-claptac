@@ -1,0 +1,239 @@
+import React, { useEffect, useMemo, useState } from 'react';
+
+function StepHeader({ title, subtitle }) {
+  return (
+    <div className="mb-4">
+      <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+      {subtitle && <p className="text-slate-600 text-sm">{subtitle}</p>}
+    </div>
+  );
+}
+
+function Nav({ step, setStep, maxStep, onClose }) {
+  return (
+    <div className="mt-6 flex items-center justify-between">
+      <button
+        className="px-3 py-1.5 rounded border text-sm"
+        onClick={() => (step > 1 ? setStep(step - 1) : onClose?.())}
+      >
+        {step > 1 ? 'Back' : 'Close'}
+      </button>
+      <div className="text-xs text-slate-500">Step {step} / {maxStep}</div>
+    </div>
+  );
+}
+
+export default function CoachWizard({ userId, onComplete, onClose }) {
+  const MAX = 4;
+  const [step, setStep] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // State for steps
+  const [tariffType, setTariffType] = useState('TOU');
+  const [blockRates, setBlockRates] = useState({ r0_30: '', r31_60: '', r61_90: '', r91_120: '', r121_180: '', r180p: '', fixed: '', startDate: '', usedUnits: '' });
+  const [touRates, setTouRates] = useState({ offpeak: '25', day: '45', peak: '70', fixed: '0' });
+  const [appliances, setAppliances] = useState([{ name: 'Washing Machine', watts: 500, minutes: 60, earliest: '06:00', latest: '22:00', perWeek: 3 }]);
+  const [co2Mode, setCo2Mode] = useState('default'); // default | constant | profile
+  const [co2Constant, setCo2Constant] = useState('0.53');
+  const [co2Profile, setCo2Profile] = useState(''); // 48 comma-separated values
+  const [solar, setSolar] = useState({ has: false, scheme: 'NET_ACCOUNTING', exportRate: '', profile: '' });
+
+  function saveLocalConfig() {
+    const cfg = { tariffType, blockRates, touRates, appliances, co2Mode, co2Constant, co2Profile, solar };
+    localStorage.setItem('coachConfig', JSON.stringify(cfg));
+  }
+
+  async function postTariff() {
+    setSaving(true); setError('');
+    try {
+      if (tariffType === 'TOU') {
+        const body = {
+          utility: 'CEB', tariffType: 'TOU', windows: [
+            { name: 'Off-Peak', startTime: '22:30', endTime: '05:30', rateLKR: Number(touRates.offpeak || 0) },
+            { name: 'Day',      startTime: '05:30', endTime: '18:30', rateLKR: Number(touRates.day || 0) },
+            { name: 'Peak',     startTime: '18:30', endTime: '22:30', rateLKR: Number(touRates.peak || 0) }
+          ], fixedLKR: Number(touRates.fixed || 0) };
+        await fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      } else {
+        const body = {
+          utility: 'CEB', tariffType: 'BLOCK', fixedLKR: Number(blockRates.fixed || 0), billingCycleStart: blockRates.startDate || null, usedUnits: Number(blockRates.usedUnits || 0),
+          // Backend expects blocks: [{ uptoKWh, rateLKR }]; it will infer spans.
+          blocks: [
+            { uptoKWh: 30,  rateLKR: Number(blockRates.r0_30   || 0) },
+            { uptoKWh: 60,  rateLKR: Number(blockRates.r31_60  || 0) },
+            { uptoKWh: 90,  rateLKR: Number(blockRates.r61_90  || 0) },
+            { uptoKWh: 120, rateLKR: Number(blockRates.r91_120 || 0) },
+            { uptoKWh: 180, rateLKR: Number(blockRates.r121_180|| 0) },
+            { uptoKWh: 999999, rateLKR: Number(blockRates.r180p || 0) }
+          ]
+        };
+        await fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      }
+      saveLocalConfig();
+      setStep(2);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally { setSaving(false); }
+  }
+
+  async function postAppliances() {
+    setSaving(true); setError('');
+    try {
+      const items = appliances.map(a => ({ id: a.name.toLowerCase().replace(/\s+/g, ''), name: a.name, ratedPowerW: Number(a.watts||0), cycleMinutes: Number(a.minutes||0), earliestStart: a.earliest, latestFinish: a.latest, runsPerWeek: Number(a.perWeek||0) }));
+      await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items) });
+      saveLocalConfig();
+      setStep(3);
+    } catch (e) { setError(e.message || String(e)); } finally { setSaving(false); }
+  }
+
+  async function postCo2() {
+    setSaving(true); setError('');
+    try {
+      if (co2Mode === 'default') {
+        await fetch(`/config/co2?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultKgPerKWh: 0.53 }) });
+      } else if (co2Mode === 'constant') {
+        await fetch(`/config/co2?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultKgPerKWh: Number(co2Constant || 0.53) }) });
+      } else {
+        const values = (co2Profile || '').split(/[\s,]+/).map(Number).filter(v => Number.isFinite(v));
+        await fetch(`/config/co2model?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots48: values }) });
+      }
+      saveLocalConfig();
+      setStep(4);
+    } catch (e) { setError(e.message || String(e)); } finally { setSaving(false); }
+  }
+
+  async function postSolar() {
+    setSaving(true); setError('');
+    try {
+      if (solar.has) {
+        await fetch(`/config/solar?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scheme: solar.scheme, exportPriceLKR: Number(solar.exportRate||0), dailyProfile: (solar.profile||'').split(/[\s,]+/).map(Number).filter(Number.isFinite) }) });
+      }
+      saveLocalConfig();
+      localStorage.setItem('coachSetupDone', 'true');
+      onComplete?.();
+    } catch (e) { setError(e.message || String(e)); } finally { setSaving(false); }
+  }
+
+  // UI
+  return (
+    <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 p-5">
+        {step === 1 && (
+          <div>
+            <StepHeader title="Tariff Setup" subtitle="Tell us how your electricity is billed" />
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Tariff Type</label>
+              <select className="border rounded px-2 py-1" value={tariffType} onChange={(e)=>setTariffType(e.target.value)}>
+                <option value="BLOCK">Block (Domestic Type 1)</option>
+                <option value="TOU">Time-of-Use (Domestic Type 2)</option>
+              </select>
+            </div>
+            {tariffType === 'BLOCK' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="text-sm">Billing cycle start date</label><input type="date" className="w-full border rounded px-2 py-1" value={blockRates.startDate} onChange={e=>setBlockRates({...blockRates, startDate:e.target.value})}/></div>
+                <div><label className="text-sm">Used units this month</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.usedUnits} onChange={e=>setBlockRates({...blockRates, usedUnits:e.target.value})}/></div>
+                <div><label className="text-sm">0–30 Rs/kWh</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r0_30} onChange={e=>setBlockRates({...blockRates, r0_30:e.target.value})}/></div>
+                <div><label className="text-sm">31–60</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r31_60} onChange={e=>setBlockRates({...blockRates, r31_60:e.target.value})}/></div>
+                <div><label className="text-sm">61–90</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r61_90} onChange={e=>setBlockRates({...blockRates, r61_90:e.target.value})}/></div>
+                <div><label className="text-sm">91–120</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r91_120} onChange={e=>setBlockRates({...blockRates, r91_120:e.target.value})}/></div>
+                <div><label className="text-sm">121–180</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r121_180} onChange={e=>setBlockRates({...blockRates, r121_180:e.target.value})}/></div>
+                <div><label className="text-sm">180+</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.r180p} onChange={e=>setBlockRates({...blockRates, r180p:e.target.value})}/></div>
+                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (Rs)</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.fixed} onChange={e=>setBlockRates({...blockRates, fixed:e.target.value})}/></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="text-sm">Off-peak (22:30–05:30) Rs/kWh</label><input type="number" className="w-full border rounded px-2 py-1" value={touRates.offpeak} onChange={e=>setTouRates({...touRates, offpeak:e.target.value})}/></div>
+                <div><label className="text-sm">Day (05:30–18:30)</label><input type="number" className="w-full border rounded px-2 py-1" value={touRates.day} onChange={e=>setTouRates({...touRates, day:e.target.value})}/></div>
+                <div><label className="text-sm">Peak (18:30–22:30)</label><input type="number" className="w-full border rounded px-2 py-1" value={touRates.peak} onChange={e=>setTouRates({...touRates, peak:e.target.value})}/></div>
+                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (Rs)</label><input type="number" className="w-full border rounded px-2 py-1" value={touRates.fixed} onChange={e=>setTouRates({...touRates, fixed:e.target.value})}/></div>
+              </div>
+            )}
+            <div className="mt-4 flex justify-end">
+              <button disabled={saving} onClick={postTariff} className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60">Save & Continue</button>
+            </div>
+            <Nav step={step} setStep={setStep} maxStep={MAX} onClose={onClose} />
+          </div>
+        )}
+
+        {step === 2 && (
+          <div>
+            <StepHeader title="Appliances & Tasks" subtitle="Tell us what you want to track" />
+            <div className="space-y-3 max-h-72 overflow-auto pr-1">
+              {appliances.map((a, i) => (
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-6 gap-2 border rounded p-2">
+                  <input className="border rounded px-2 py-1 sm:col-span-2" placeholder="Name" value={a.name} onChange={e=>{ const v=[...appliances]; v[i]={...a,name:e.target.value}; setAppliances(v); }} />
+                  <input className="border rounded px-2 py-1" type="number" placeholder="Watts" value={a.watts} onChange={e=>{ const v=[...appliances]; v[i]={...a,watts:e.target.value}; setAppliances(v); }} />
+                  <input className="border rounded px-2 py-1" type="number" placeholder="Minutes" value={a.minutes} onChange={e=>{ const v=[...appliances]; v[i]={...a,minutes:e.target.value}; setAppliances(v); }} />
+                  <input className="border rounded px-2 py-1" type="time" value={a.earliest} onChange={e=>{ const v=[...appliances]; v[i]={...a,earliest:e.target.value}; setAppliances(v); }} />
+                  <input className="border rounded px-2 py-1" type="time" value={a.latest} onChange={e=>{ const v=[...appliances]; v[i]={...a,latest:e.target.value}; setAppliances(v); }} />
+                  <input className="border rounded px-2 py-1" type="number" placeholder="Runs/week" value={a.perWeek} onChange={e=>{ const v=[...appliances]; v[i]={...a,perWeek:e.target.value}; setAppliances(v); }} />
+                  <div className="sm:col-span-6 flex justify-end"><button className="text-rose-600 text-sm" onClick={()=>{ const v=[...appliances]; v.splice(i,1); setAppliances(v); }}>Remove</button></div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2"><button className="text-sm text-blue-600" onClick={()=>setAppliances([...appliances,{ name:'New Appliance', watts: 1000, minutes: 30, earliest:'06:00', latest:'22:00', perWeek:1 }])}>+ Add appliance</button></div>
+            <div className="mt-4 flex justify-end">
+              <button disabled={saving} onClick={postAppliances} className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60">Save & Continue</button>
+            </div>
+            <Nav step={step} setStep={setStep} maxStep={MAX} onClose={onClose} />
+          </div>
+        )}
+
+        {step === 3 && (
+          <div>
+            <StepHeader title="CO₂ Model" subtitle="Pick a model for greener scheduling" />
+            <div className="space-y-2">
+              <label className="flex items-center gap-2"><input type="radio" checked={co2Mode==='default'} onChange={()=>setCo2Mode('default')} /> <span>Use default 0.53 kg/kWh</span></label>
+              <label className="flex items-center gap-2"><input type="radio" checked={co2Mode==='constant'} onChange={()=>setCo2Mode('constant')} /> <span>Use my constant factor</span></label>
+              {co2Mode==='constant' && (
+                <input className="border rounded px-2 py-1" type="number" step="0.01" value={co2Constant} onChange={e=>setCo2Constant(e.target.value)} />
+              )}
+              <label className="flex items-center gap-2"><input type="radio" checked={co2Mode==='profile'} onChange={()=>setCo2Mode('profile')} /> <span>Upload a 48-slot daily profile</span></label>
+              {co2Mode==='profile' && (
+                <textarea className="w-full border rounded p-2" rows={4} placeholder="48 numbers separated by commas or spaces" value={co2Profile} onChange={e=>setCo2Profile(e.target.value)} />
+              )}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button disabled={saving} onClick={postCo2} className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60">Save & Continue</button>
+            </div>
+            <Nav step={step} setStep={setStep} maxStep={MAX} onClose={onClose} />
+          </div>
+        )}
+
+        {step === 4 && (
+          <div>
+            <StepHeader title="Rooftop Solar (optional)" subtitle="Tell us about your solar setup" />
+            <label className="flex items-center gap-2 mb-2"><input type="checkbox" checked={solar.has} onChange={e=>setSolar({...solar, has:e.target.checked})}/> <span>I have rooftop solar</span></label>
+            {solar.has && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm">Scheme</label>
+                  <select className="w-full border rounded px-2 py-1" value={solar.scheme} onChange={e=>setSolar({...solar, scheme:e.target.value})}>
+                    <option value="NET_METERING">Net Metering</option>
+                    <option value="NET_ACCOUNTING">Net Accounting</option>
+                    <option value="NET_PLUS">Net Plus</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm">Export rate (Rs/kWh)</label>
+                  <input className="w-full border rounded px-2 py-1" type="number" value={solar.exportRate} onChange={e=>setSolar({...solar, exportRate:e.target.value})} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-sm">Daily generation profile (optional, comma/space separated)</label>
+                  <textarea className="w-full border rounded p-2" rows={3} value={solar.profile} onChange={e=>setSolar({...solar, profile:e.target.value})} />
+                </div>
+              </div>
+            )}
+            <div className="mt-4 flex justify-end">
+              <button disabled={saving} onClick={postSolar} className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60">Finish</button>
+            </div>
+            <Nav step={step} setStep={setStep} maxStep={MAX} onClose={onClose} />
+          </div>
+        )}
+
+        {error && <div className="mt-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded p-2">{error}</div>}
+      </div>
+    </div>
+  );
+}

@@ -5,6 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useAuth } from './AuthContext.jsx';
 import Login from './Login.jsx';
 import Signup from './Signup.jsx';
+import CoachWizard from './CoachWizard.jsx';
 
 const GQL_URL = "/graphql";
 async function gql(query, variables = {}) {
@@ -127,8 +128,14 @@ function formatTimeMaybe(dateStr) {
 }
 
 function DashboardApp({ user, onLogout }) {
+  const [showCoach, setShowCoach] = useState(false);
   const [userId, setUserId] = useState(user?.email || "demo");
   useEffect(() => { if (user?.email) setUserId(user.email); }, [user?.email]);
+  useEffect(() => {
+    // Open the wizard if first time after login
+    const first = localStorage.getItem('coachSetupDone');
+    if (!first) setShowCoach(true);
+  }, []);
   const [date, setDate] = useState(todayISOInColombo());
   const [alpha, setAlpha] = useState(1);
   const [health, setHealth] = useState(null);
@@ -225,6 +232,10 @@ function DashboardApp({ user, onLogout }) {
 
       <main className="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="col-span-1 lg:col-span-1 space-y-4">
+          <Section title="HomeEnergy Coach" icon={Settings} right={null}>
+            <div className="text-sm text-slate-600">Answer a few questions to tailor tariffs, tasks, CO₂, and solar settings.</div>
+            <div className="mt-2"><button className="px-3 py-1.5 rounded bg-emerald-600 text-white" onClick={()=>setShowCoach(true)}>Open Coach</button></div>
+          </Section>
           <Section title="Today's Savings" icon={TrendingUp} right={<div className="flex items-center gap-2 text-sm text-slate-500"><Wifi className={`w-4 h-4 ${health ? "text-emerald-500" : "text-slate-400"}`} /><span>{health ? "Connected" : "Offline"}</span></div>}>
             <div className="flex items-end gap-4"><div><div className="text-3xl font-extrabold">{fmtMoneyLKR(totalSaving)}</div><div className="text-sm text-slate-500">Potential saving for {date}</div></div></div>
             <div className="mt-3"><SavingsChart data={mockSavingsSeries} /></div>
@@ -331,6 +342,9 @@ function DashboardApp({ user, onLogout }) {
 
       <footer className="max-w-6xl mx-auto p-4 text-xs text-slate-500"><div className="flex items-center gap-2"><Info className="w-4 h-4" /><span>Demo UI. GraphQL and services optional; falls back to mock data if offline.</span></div></footer>
   </div>
+  {showCoach && (
+    <CoachWizard userId={userId} onClose={()=>setShowCoach(false)} onComplete={()=>setShowCoach(false)} />
+  )}
   </ErrorBoundary>
   );
 }
