@@ -126,66 +126,7 @@ function formatTimeMaybe(dateStr) {
   } catch (_) { return null; }
 }
 
-export default function LankaWattWiseApp() {
-  const { user, isAuthenticated, login, signup, logout, loading } = useAuth();
-  const [showSignup, setShowSignup] = useState(false);
-
-  // Initial auth check loading state
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-slate-600">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Loading...
-      </div>
-    );
-  }
-
-  // If not authenticated, show login/signup screen
-  if (!isAuthenticated()) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
-        <div className="max-w-md w-full mx-4">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Lanka Watt Wise</h1>
-            <p className="text-slate-600 dark:text-slate-400">Smart Energy Management System</p>
-          </div>
-
-          {showSignup ? (
-            <div>
-              <Signup 
-                onSignup={(u) => login(u)}
-                onSwitchToLogin={() => setShowSignup(false)}
-              />
-              <div className="text-center mt-4">
-                <button 
-                  onClick={() => setShowSignup(false)}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  Already have an account? Sign in
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <Login 
-                onLogin={(u) => login(u)}
-                onSwitchToSignup={() => setShowSignup(true)}
-              />
-              <div className="text-center mt-4">
-                <button 
-                  onClick={() => setShowSignup(true)}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  Don't have an account? Sign up
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
+function DashboardApp({ user, onLogout }) {
   const [userId, setUserId] = useState(user?.email || "demo");
   useEffect(() => { if (user?.email) setUserId(user.email); }, [user?.email]);
   const [date, setDate] = useState(todayISOInColombo());
@@ -270,7 +211,7 @@ export default function LankaWattWiseApp() {
               <User className="w-4 h-4 text-slate-500" />
               <span className="text-sm text-slate-600 dark:text-slate-400">{user?.email}</span>
               <button 
-                onClick={logout}
+                onClick={onLogout}
                 className="flex items-center gap-1 px-2 py-1 text-sm text-slate-600 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 title="Sign out"
               >
@@ -392,4 +333,68 @@ export default function LankaWattWiseApp() {
   </div>
   </ErrorBoundary>
   );
+}
+
+export default function LankaWattWiseApp() {
+  const { user, isAuthenticated, login, signup, logout, loading } = useAuth();
+  const [showSignup, setShowSignup] = useState(false);
+
+  // Initial auth check loading state (no hooks after this return in this component)
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-600">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+        Loading...
+      </div>
+    );
+  }
+
+  // If not authenticated, show login/signup screen (still no extra hooks below)
+  if (!isAuthenticated()) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
+        <div className="max-w-md w-full mx-4">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Lanka Watt Wise</h1>
+            <p className="text-slate-600 dark:text-slate-400">Smart Energy Management System</p>
+          </div>
+
+          {showSignup ? (
+            <div>
+              <Signup 
+                onSignup={(u) => login(u)}
+                onSwitchToLogin={() => setShowSignup(false)}
+              />
+              <div className="text-center mt-4">
+                <button 
+                  onClick={() => setShowSignup(false)}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  Already have an account? Sign in
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <Login 
+                onLogin={(u) => login(u)}
+                onSwitchToSignup={() => setShowSignup(true)}
+              />
+              <div className="text-center mt-4">
+                <button 
+                  onClick={() => setShowSignup(true)}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  Don't have an account? Sign up
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Authenticated branch: render child component that owns its hooks
+  return <DashboardApp user={user} onLogout={logout} />;
 }

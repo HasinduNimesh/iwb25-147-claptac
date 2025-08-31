@@ -10,6 +10,7 @@ final http:Client gqlClient = checkpanic new (gqlUrlBase);
 final http:Client configC = checkpanic new ("http://localhost:8090");
 final http:Client billingC = checkpanic new ("http://localhost:8091");
 final http:Client schedC = checkpanic new ("http://localhost:8092");
+final http:Client authC = checkpanic new ("http://localhost:8087");
 
 function renderIndex() returns http:Response|error {
   // Try dist build first; fallback to public during dev
@@ -40,6 +41,20 @@ service / on new http:Listener(port_ui) {
   // Also serve '/index' for convenience
   resource function get index() returns http:Response|error {
     return renderIndex();
+  }
+
+  // Auth passthrough for production (so /auth/* works when UI is served by this gateway)
+  resource function post auth/login(@http:Payload json body) returns json|error {
+    http:Response r = check authC->post("/auth/login", body);
+    return check r.getJsonPayload();
+  }
+  resource function post auth/signup(@http:Payload json body) returns json|error {
+    http:Response r = check authC->post("/auth/signup", body);
+    return check r.getJsonPayload();
+  }
+  resource function get auth/health() returns json|error {
+    http:Response r = check authC->get("/auth/health");
+    return check r.getJsonPayload();
   }
 
   resource function post gql(@http:Payload json body) returns json|error {
