@@ -307,12 +307,30 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
             <div className="space-y-3 max-h-72 overflow-auto pr-1">
               {appliances.map((a, i) => (
                 <div key={i} className="grid grid-cols-1 sm:grid-cols-6 gap-2 border rounded p-2">
-                  <input className="border rounded px-2 py-1 sm:col-span-2" placeholder="Name" value={a.name} onChange={e=>{ const v=[...appliances]; v[i]={...a,name:e.target.value}; setAppliances(v); }} />
-                  <input className="border rounded px-2 py-1" type="number" placeholder="Watts" value={a.watts} onChange={e=>{ const v=[...appliances]; v[i]={...a,watts:e.target.value}; setAppliances(v); }} />
-                  <input className="border rounded px-2 py-1" type="number" placeholder="Minutes" value={a.minutes} onChange={e=>{ const v=[...appliances]; v[i]={...a,minutes:e.target.value}; setAppliances(v); }} />
-                  <input className="border rounded px-2 py-1" type="time" value={a.earliest} onChange={e=>{ const v=[...appliances]; v[i]={...a,earliest:e.target.value}; setAppliances(v); }} />
-                  <input className="border rounded px-2 py-1" type="time" value={a.latest} onChange={e=>{ const v=[...appliances]; v[i]={...a,latest:e.target.value}; setAppliances(v); }} />
-                  <input className="border rounded px-2 py-1" type="number" placeholder="Runs/week" value={a.perWeek} onChange={e=>{ const v=[...appliances]; v[i]={...a,perWeek:e.target.value}; setAppliances(v); }} />
+                  <div className="flex flex-col sm:col-span-2">
+                    <label htmlFor={`name-${i}`} className="text-sm text-slate-600 mb-1">Appliance name</label>
+                    <input id={`name-${i}`} className="border rounded px-2 py-1" placeholder="e.g., Washing Machine" value={a.name} onChange={e=>{ const v=[...appliances]; v[i]={...a,name:e.target.value}; setAppliances(v); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label htmlFor={`watts-${i}`} className="text-sm text-slate-600 mb-1">Power (W)</label>
+                    <input id={`watts-${i}`} className="border rounded px-2 py-1" type="number" inputMode="numeric" placeholder="e.g., 500" value={a.watts} onChange={e=>{ const v=[...appliances]; v[i]={...a,watts:e.target.value}; setAppliances(v); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label htmlFor={`minutes-${i}`} className="text-sm text-slate-600 mb-1">Cycle duration (min)</label>
+                    <input id={`minutes-${i}`} className="border rounded px-2 py-1" type="number" inputMode="numeric" placeholder="e.g., 60" value={a.minutes} onChange={e=>{ const v=[...appliances]; v[i]={...a,minutes:e.target.value}; setAppliances(v); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label htmlFor={`earliest-${i}`} className="text-sm text-slate-600 mb-1">Earliest start</label>
+                    <input id={`earliest-${i}`} className="border rounded px-2 py-1" type="time" value={a.earliest} onChange={e=>{ const v=[...appliances]; v[i]={...a,earliest:e.target.value}; setAppliances(v); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label htmlFor={`latest-${i}`} className="text-sm text-slate-600 mb-1">Latest finish</label>
+                    <input id={`latest-${i}`} className="border rounded px-2 py-1" type="time" value={a.latest} onChange={e=>{ const v=[...appliances]; v[i]={...a,latest:e.target.value}; setAppliances(v); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label htmlFor={`perweek-${i}`} className="text-sm text-slate-600 mb-1">Runs per week</label>
+                    <input id={`perweek-${i}`} className="border rounded px-2 py-1" type="number" inputMode="numeric" placeholder="e.g., 3" value={a.perWeek} onChange={e=>{ const v=[...appliances]; v[i]={...a,perWeek:e.target.value}; setAppliances(v); }} />
+                  </div>
                   <div className="sm:col-span-6 flex justify-end"><button className="text-rose-600 text-sm" onClick={()=>{ const v=[...appliances]; v.splice(i,1); setAppliances(v); }}>Remove</button></div>
                 </div>
               ))}
