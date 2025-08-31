@@ -23,6 +23,10 @@ ballerina/target/
 **/target/
 **/.ballerina/
 
+# Ballerina auto-generated dependency graph (let Docker/container build regenerate it)
+# Ignoring prevents distribution version mismatches between local env and image
+ballerina/Dependencies.toml
+
 # Java/JARs (generated)
 **/*.jar
 
@@ -55,3 +59,33 @@ $RECYCLE.BIN/
 # Coverage
 coverage/
 **/.nyc_output/
+
+# IDE / editor (JetBrains, others)
+.idea/
+*.iml
+
+# Generic node/yarn/pnpm logs at repo root
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ESLint cache
+**/.eslintcache
+
+# Local config overrides (keep base Config.toml committed)
+**/Config.local.toml
+**/Config.*.local.toml
+**/*.override.toml
+
+# Generated Kubernetes manifests (if produced by tooling)
+deploy/k8s/generated/
+deploy/k8s/**/generated-*.yaml
+
+# Docker Compose local overrides
+deploy/docker-compose.override.yml
+deploy/docker-compose.local.yml
+
+# Logs directories
+logs/
+**/logs/
