@@ -28,6 +28,7 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [loaded, setLoaded] = useState(false);
 
   // State for steps
   const [tariffType, setTariffType] = useState('TOU');
@@ -44,6 +45,97 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
     localStorage.setItem('coachConfig', JSON.stringify(cfg));
   }
 
+  // Prefill from server (or localStorage fallback) on open
+  useEffect(() => {
+    let cancelled = false;
+    async function loadExisting() {
+      try {
+        setError('');
+        // Tariff
+        const tRes = await fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`).catch(() => null);
+        if (tRes?.ok) {
+          const t = await tRes.json().catch(() => null);
+          if (t?.tariffType === 'TOU' && Array.isArray(t?.windows)) {
+            setTariffType('TOU');
+            const off = t.windows.find(w => (w.name||'').toLowerCase().includes('off'));
+            const day = t.windows.find(w => (w.name||'').toLowerCase().includes('day'));
+            const peak = t.windows.find(w => (w.name||'').toLowerCase().includes('peak'));
+            setTouRates({
+              offpeak: String(off?.rateLKR ?? touRates.offpeak),
+              day: String(day?.rateLKR ?? touRates.day),
+              peak: String(peak?.rateLKR ?? touRates.peak),
+              fixed: String((t?.fixedLKR ?? touRates.fixed) || '0')
+            });
+          } else if (t?.tariffType === 'BLOCK' && Array.isArray(t?.blocks)) {
+            setTariffType('BLOCK');
+            const getRate = (upto) => String((t.blocks.find(b => b.uptoKWh === upto)?.rateLKR) ?? '');
+            setBlockRates({
+              ...blockRates,
+              r0_30: getRate(30), r31_60: getRate(60), r61_90: getRate(90), r91_120: getRate(120), r121_180: getRate(180), r180p: getRate(999999),
+              fixed: String((t?.fixedLKR ?? blockRates.fixed) || ''),
+            });
+          }
+        }
+        // Appliances
+        const aRes = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null);
+        if (aRes?.ok) {
+          const arr = await aRes.json().catch(() => []);
+          if (Array.isArray(arr) && arr.length) {
+            setAppliances(arr.map(x => ({
+              name: x.name || x.id,
+              watts: Number(x.ratedPowerW ?? 0),
+              minutes: Number(x.cycleMinutes ?? 60),
+              earliest: '06:00',
+              latest: x.latestFinish || '22:00',
+              perWeek: 1,
+            })));
+          }
+        }
+        // CO2
+        const cRes = await fetch(`/config/co2?userId=${encodeURIComponent(userId)}`).catch(() => null);
+        if (cRes?.ok) {
+          const c = await cRes.json().catch(() => null);
+          if (c?.profile && Array.isArray(c.profile) && c.profile.length) {
+            setCo2Mode('profile');
+            setCo2Profile(c.profile.join(', '));
+          } else if (typeof c?.defaultKgPerKWh === 'number') {
+            setCo2Mode('constant');
+            setCo2Constant(String(c.defaultKgPerKWh));
+          }
+        }
+        // Solar
+        const sRes = await fetch(`/config/solar?userId=${encodeURIComponent(userId)}`).catch(() => null);
+        if (sRes?.ok) {
+          const s = await sRes.json().catch(() => null);
+          if (s && (s.scheme || s.exportPriceLKR)) {
+            setSolar({ has: true, scheme: s.scheme || 'NET_ACCOUNTING', exportRate: String(s.exportPriceLKR ?? ''), profile: '' });
+          }
+        }
+        // Fallback from localStorage if nothing came back
+        if (!tRes?.ok && !aRes?.ok && !cRes?.ok && !sRes?.ok) {
+          const raw = localStorage.getItem('coachConfig');
+          if (raw) {
+            try {
+              const cfg = JSON.parse(raw);
+              if (cfg?.tariffType) setTariffType(cfg.tariffType);
+              if (cfg?.touRates) setTouRates(cfg.touRates);
+              if (cfg?.blockRates) setBlockRates(cfg.blockRates);
+              if (Array.isArray(cfg?.appliances)) setAppliances(cfg.appliances);
+              if (cfg?.co2Mode) setCo2Mode(cfg.co2Mode);
+              if (cfg?.co2Constant) setCo2Constant(cfg.co2Constant);
+              if (cfg?.co2Profile) setCo2Profile(cfg.co2Profile);
+              if (cfg?.solar) setSolar(cfg.solar);
+            } catch {}
+          }
+        }
+      } catch (e) {
+        if (!cancelled) setError(e.message || String(e));
+      } finally { if (!cancelled) setLoaded(true); }
+    }
+    loadExisting();
+    return () => { cancelled = true; };
+  }, [userId]);
+
   async function postTariff() {
     setSaving(true); setError('');
     try {
@@ -54,7 +146,9 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
             { name: 'Day',      startTime: '05:30', endTime: '18:30', rateLKR: Number(touRates.day || 0) },
             { name: 'Peak',     startTime: '18:30', endTime: '22:30', rateLKR: Number(touRates.peak || 0) }
           ], fixedLKR: Number(touRates.fixed || 0) };
-        await fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = res && await res.json().catch(()=>({ ok:false }));
+  if (!res.ok || !j?.ok) throw new Error('Failed to save tariff');
       } else {
         const body = {
           utility: 'CEB', tariffType: 'BLOCK', fixedLKR: Number(blockRates.fixed || 0), billingCycleStart: blockRates.startDate || null, usedUnits: Number(blockRates.usedUnits || 0),
@@ -68,7 +162,9 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
             { uptoKWh: 999999, rateLKR: Number(blockRates.r180p || 0) }
           ]
         };
-        await fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = res && await res.json().catch(()=>({ ok:false }));
+  if (!res.ok || !j?.ok) throw new Error('Failed to save tariff');
       }
       saveLocalConfig();
       setStep(2);
@@ -81,7 +177,9 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
     setSaving(true); setError('');
     try {
       const items = appliances.map(a => ({ id: a.name.toLowerCase().replace(/\s+/g, ''), name: a.name, ratedPowerW: Number(a.watts||0), cycleMinutes: Number(a.minutes||0), earliestStart: a.earliest, latestFinish: a.latest, runsPerWeek: Number(a.perWeek||0) }));
-      await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items) });
+  const res = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items) });
+  const j = res && await res.json().catch(()=>({ ok:false }));
+  if (!res.ok || !j?.ok) throw new Error('Failed to save appliances');
       saveLocalConfig();
       setStep(3);
     } catch (e) { setError(e.message || String(e)); } finally { setSaving(false); }
@@ -91,12 +189,18 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
     setSaving(true); setError('');
     try {
       if (co2Mode === 'default') {
-        await fetch(`/config/co2?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultKgPerKWh: 0.53 }) });
+  const res = await fetch(`/config/co2?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultKgPerKWh: 0.53 }) });
+  const j = res && await res.json().catch(()=>({ ok:false }));
+  if (!res.ok || !j?.ok) throw new Error('Failed to save CO2');
       } else if (co2Mode === 'constant') {
-        await fetch(`/config/co2?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultKgPerKWh: Number(co2Constant || 0.53) }) });
+  const res = await fetch(`/config/co2?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultKgPerKWh: Number(co2Constant || 0.53) }) });
+  const j = res && await res.json().catch(()=>({ ok:false }));
+  if (!res.ok || !j?.ok) throw new Error('Failed to save CO2');
       } else {
         const values = (co2Profile || '').split(/[\s,]+/).map(Number).filter(v => Number.isFinite(v));
-        await fetch(`/config/co2model?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots48: values }) });
+  const res = await fetch(`/config/co2model?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots48: values }) });
+  const j = res && await res.json().catch(()=>({ ok:false }));
+  if (!res.ok || !j?.ok) throw new Error('Failed to save CO2 model');
       }
       saveLocalConfig();
       setStep(4);
@@ -107,7 +211,9 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
     setSaving(true); setError('');
     try {
       if (solar.has) {
-        await fetch(`/config/solar?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scheme: solar.scheme, exportPriceLKR: Number(solar.exportRate||0), dailyProfile: (solar.profile||'').split(/[\s,]+/).map(Number).filter(Number.isFinite) }) });
+  const res = await fetch(`/config/solar?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scheme: solar.scheme, exportPriceLKR: Number(solar.exportRate||0), dailyProfile: (solar.profile||'').split(/[\s,]+/).map(Number).filter(Number.isFinite) }) });
+  const j = res && await res.json().catch(()=>({ ok:false }));
+  if (!res.ok || !j?.ok) throw new Error('Failed to save solar');
       }
       saveLocalConfig();
       localStorage.setItem('coachSetupDone', 'true');
@@ -119,6 +225,7 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 p-5">
+        {!loaded && (<div className="mb-3 text-sm text-slate-500">Loading your saved settings…</div>)}
         {step === 1 && (
           <div>
             <StepHeader title="Tariff Setup" subtitle="Tell us how your electricity is billed" />

@@ -4,6 +4,30 @@ public type UpsertResponse record { boolean ok; };
 
 configurable int port_config = 8090;
 service /config on new http:Listener(port_config) {
+    // Read endpoints
+    resource function get tariff(string userId) returns TariffConfig|error {
+        TariffConfig? t = getTariff(userId);
+        if t is TariffConfig { return t; }
+        // Return a default TOU for Sri Lanka if not configured
+        return { utility: "CEB", tariffType: "TOU", windows: [
+            { name: "Off-Peak", startTime: "22:30", endTime: "05:30", rateLKR: 25.0 },
+            { name: "Day",      startTime: "05:30", endTime: "18:30", rateLKR: 45.0 },
+            { name: "Peak",     startTime: "18:30", endTime: "22:30", rateLKR: 70.0 }
+        ] };
+    }
+    resource function get appliances(string userId) returns ApplianceCfg[]|error {
+        return getAppliances(userId);
+    }
+    resource function get co2(string userId) returns CO2Config|error {
+        CO2Config? c = getCO2(userId);
+        if c is CO2Config { return c; }
+        return { defaultKgPerKWh: 0.53 };
+    }
+    resource function get solar(string userId) returns SolarConfig|error {
+        SolarConfig? s = getSolar(userId);
+        if s is SolarConfig { return s; }
+        return { scheme: "NET_ACCOUNTING", exportPriceLKR: 37.0 };
+    }
     resource function post tariff(string userId, @http:Payload json body) returns UpsertResponse|error {
         // Be permissive with payloads; coerce json -> TariffConfig when possible
         TariffConfig cfg;

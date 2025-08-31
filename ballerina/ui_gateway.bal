@@ -1,5 +1,6 @@
 import ballerina/http;
 import ballerina/io;
+import ballerina/log;
 
 configurable string gqlUrlBase = "http://localhost:9090";
 configurable int port_ui = 9080;
@@ -72,13 +73,45 @@ service / on new http:Listener(port_ui) {
 
   // Proxy REST endpoints used by the UI
   resource function get tariff/windows(string date) returns json|error {
+    // Legacy compatibility: forward to tariff context static windows
     http:Response r = check tariffClient->get("/tariff/windows?date=" + date);
     return check r.getJsonPayload();
   }
 
   resource function get ontology/appliances(string userId) returns json|error {
+  // Fetch ontology base and user overrides, then merge by id
+  json onto = [];
+  do {
     http:Response r = check ontologyClient->get("/ontology/appliances?userId=" + userId);
-    return check r.getJsonPayload();
+    onto = check r.getJsonPayload();
+  } on fail var e1 {
+    log:printWarn("ontology appliances fetch failed: " + e1.message());
+    onto = [];
+  }
+  json overrides = [];
+  do {
+    http:Response rc = check configC->get(string `/config/appliances?userId=${userId}`);
+    overrides = check rc.getJsonPayload();
+  } on fail var e2 {
+    log:printWarn("config appliances fetch failed: " + e2.message());
+    overrides = [];
+  }
+  // If overrides present, prefer them
+  if overrides is json[] && overrides.length() > 0 {
+    // Map to common shape exposed to UI
+    json[] mapped = [];
+    foreach json j in overrides {
+      if j is map<json> {
+        string id = <string>(j.get("id") ?: "dev");
+        string name = <string>(j.get("name") ?: id);
+        boolean curfew = <boolean>(j.get("noiseCurfew") ?: false);
+        string flex = curfew ? "nonShiftable" : "shiftable";
+        mapped.push({ id: id, label: name, flexibility: flex });
+      }
+    }
+    return mapped;
+  }
+  return onto;
   }
 
   resource function get advice/plan(string userId, string date) returns json|error {
@@ -109,6 +142,24 @@ service / on new http:Listener(port_ui) {
   }
   resource function post config/solar(string userId, @http:Payload json body) returns json|error {
     http:Response r = check configC->post(string `/config/solar?userId=${userId}`, body);
+    return check r.getJsonPayload();
+  }
+
+  // Read-through proxies for config
+  resource function get config/tariff(string userId) returns json|error {
+    http:Response r = check configC->get(string `/config/tariff?userId=${userId}`);
+    return check r.getJsonPayload();
+  }
+  resource function get config/appliances(string userId) returns json|error {
+    http:Response r = check configC->get(string `/config/appliances?userId=${userId}`);
+    return check r.getJsonPayload();
+  }
+  resource function get config/co2(string userId) returns json|error {
+    http:Response r = check configC->get(string `/config/co2?userId=${userId}`);
+    return check r.getJsonPayload();
+  }
+  resource function get config/solar(string userId) returns json|error {
+    http:Response r = check configC->get(string `/config/solar?userId=${userId}`);
     return check r.getJsonPayload();
   }
 

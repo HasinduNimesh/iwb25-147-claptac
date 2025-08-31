@@ -47,18 +47,8 @@ function normalizeAppliances(input) {
 function todayISOInColombo() {
   const d = new Date(); const y = d.getFullYear(); const m = `${d.getMonth() + 1}`.padStart(2, "0"); const dd = `${d.getDate()}`.padStart(2, "0"); return `${y}-${m}-${dd}`;
 }
-const mockTariffs = { windows: [ { name: "Peak", startTime: "18:30", endTime: "22:30", rateLKR: 70 }, { name: "Day", startTime: "05:30", endTime: "18:30", rateLKR: 45 }, { name: "Off-Peak", startTime: "22:30", endTime: "05:30", rateLKR: 25 } ] };
-const mockAppliances = [ 
-  { id: "WellPump", label: "Well Pump", flexible: true, icon: Plug }, 
-  { id: "WashingMachine", label: "Washing Machine", flexible: true, icon: Activity }, 
-  { id: "BedroomAC", label: "Bedroom AC", flexible: true, icon: Sun }, 
-  { id: "freezer", label: "Freezer", flexible: false, icon: Moon } 
-];
-const mockPlan = [ 
-  { id: "rec-1", applianceId: "WellPump", suggestedStart: `${todayISOInColombo()}T21:00:00`, durationMinutes: 30, reasons: ["Rule:MinRuntime30", "Window:OffPeak_21_00_05_30"], estSavingLKR: 58 }, 
-  { id: "rec-2", applianceId: "WashingMachine", suggestedStart: `${todayISOInColombo()}T21:30:00`, durationMinutes: 60, reasons: ["Constraint:Shiftable", "Avoid:Peak"], estSavingLKR: 112 } 
-];
-const mockSavingsSeries = Array.from({ length: 14 }).map((_, i) => ({ day: i + 1, saved: Math.round(200 + Math.random() * 120) }));
+// Optional: demo chart data placeholder (UI-only, not used for calculations)
+const mockSavingsSeries = Array.from({ length: 14 }).map((_, i) => ({ day: i + 1, saved: Math.round(80 + Math.random() * 40) }));
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -129,7 +119,7 @@ function formatTimeMaybe(dateStr) {
 
 function DashboardApp({ user, onLogout }) {
   const [showCoach, setShowCoach] = useState(false);
-  const [userId, setUserId] = useState(user?.email || "demo");
+  const [userId, setUserId] = useState(user?.email || "");
   useEffect(() => { if (user?.email) setUserId(user.email); }, [user?.email]);
   useEffect(() => {
     // Open the wizard if first time after login
@@ -138,7 +128,7 @@ function DashboardApp({ user, onLogout }) {
   }, []);
   const [date, setDate] = useState(todayISOInColombo());
   const [alpha, setAlpha] = useState(1);
-  const [health, setHealth] = useState(null);
+  const [health, setHealth] = useState(false);
   const [plan, setPlan] = useState([]);
   const [appliances, setAppliances] = useState([]);
   const [tariff, setTariff] = useState(null);
@@ -153,30 +143,30 @@ function DashboardApp({ user, onLogout }) {
     async function load() {
       setDataLoading(true); setError("");
       try {
-        // Live API calls through UI gateway with graceful fallbacks
+        // Live API calls through UI gateway; prefer user config
         const data = await gql(`query Q($userId:String!, $date:String!) { health currentPlan(userId:$userId, date:$date){ id applianceId suggestedStart durationMinutes reasons estSavingLKR } }`, { userId, date }).catch(() => null);
         const [tRes, aRes, bRes] = await Promise.all([
-          fetch(`/tariff/windows?date=${date}`).catch(() => null),
-          fetch(`/ontology/appliances?userId=${userId}`).catch(() => null),
-          fetch(`/billing/preview?userId=${userId}&monthlyKWh=150`).catch(() => null)
+          fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`).catch(() => null),
+          fetch(`/ontology/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null),
+          fetch(`/billing/preview?userId=${encodeURIComponent(userId)}&monthlyKWh=150`).catch(() => null)
         ]);
         if (cancelled) return;
 
-        setHealth(data?.health || "ok");
-        setPlan(Array.isArray(data?.currentPlan) ? data.currentPlan : mockPlan);
+        setHealth(!!data?.currentPlan);
+        setPlan(Array.isArray(data?.currentPlan) ? data.currentPlan : []);
 
         const tariffJson = tRes && tRes.ok ? await tRes.json().catch(() => null) : null;
-        setTariff(tariffJson || mockTariffs);
+        setTariff(tariffJson || null);
 
         const applJson = aRes && aRes.ok ? await aRes.json().catch(() => null) : null;
         const normAppl = normalizeAppliances(applJson);
-        setAppliances(normAppl.length ? normAppl : mockAppliances);
+        setAppliances(normAppl);
 
         const billJson = bRes && bRes.ok ? await bRes.json().catch(() => null) : null;
-        setBill(billJson || { estimatedCostLKR: 4200, note: "mock" });
+        setBill(billJson || null);
       } catch (e) {
         if (cancelled) return;
-        setError(e.message || String(e)); setPlan(mockPlan); setTariff(mockTariffs); setAppliances(mockAppliances);
+        setError(e.message || String(e)); setPlan([]); setTariff(null); setAppliances([]);
   } finally { if (!cancelled) setDataLoading(false); }
     }
     load(); return () => { cancelled = true; };
@@ -207,13 +197,7 @@ function DashboardApp({ user, onLogout }) {
           <div className="ml-auto flex items-center gap-2">
             <Calendar className="w-4 h-4 text-slate-500" />
             <input type="date" className="px-2 py-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/50" value={date} onChange={(e) => setDate(e.target.value)} />
-            <div className="hidden sm:flex items-center gap-2 ml-2">
-              <Layers className="w-4 h-4 text-slate-500" />
-              <select className="px-2 py-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/50" value={userId} onChange={(e) => setUserId(e.target.value)}>
-                <option value="demo">Household (demo)</option>
-                <option value="bakery">Bakery (demo)</option>
-              </select>
-            </div>
+            {/* user selection removed; using authenticated user */}
             <div className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-300 dark:border-slate-700">
               <User className="w-4 h-4 text-slate-500" />
               <span className="text-sm text-slate-600 dark:text-slate-400">{user?.email}</span>
@@ -237,15 +221,15 @@ function DashboardApp({ user, onLogout }) {
             <div className="mt-2"><button className="px-3 py-1.5 rounded bg-emerald-600 text-white" onClick={()=>setShowCoach(true)}>Open Coach</button></div>
           </Section>
           <Section title="Today's Savings" icon={TrendingUp} right={<div className="flex items-center gap-2 text-sm text-slate-500"><Wifi className={`w-4 h-4 ${health ? "text-emerald-500" : "text-slate-400"}`} /><span>{health ? "Connected" : "Offline"}</span></div>}>
-            <div className="flex items-end gap-4"><div><div className="text-3xl font-extrabold">{fmtMoneyLKR(totalSaving)}</div><div className="text-sm text-slate-500">Potential saving for {date}</div></div></div>
+            <div className="flex items-end gap-4"><div><div className="text-3xl font-extrabold">{fmtMoneyLKR(totalSaving)}</div><div className="text-sm text-slate-500">Estimated saving for {date} from your plan</div></div></div>
             <div className="mt-3"><SavingsChart data={mockSavingsSeries} /></div>
           </Section>
-          <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>{tariff ? <TariffBar windows={normalizeWindows(tariff)} /> : <div className="text-slate-500">Loading...</div>}</Section>
+          <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>{tariff ? <TariffBar windows={normalizeWindows(tariff)} /> : <div className="text-slate-500">Configure your tariff in the Coach.</div>}</Section>
           <Section title="Bill Preview" icon={Receipt}>
             {bill ? (
               <div className="text-sm text-slate-600">For 200 kWh: <b>{fmtMoneyLKR(Math.round((bill.monthlyEstLKR || bill.estimatedCostLKR || 0)))}</b> <span className="text-slate-500">{bill.note || ""}</span></div>
             ) : (
-              <div className="text-slate-500">Loading...</div>
+              <div className="text-slate-500">No bill estimate yet. Complete the Coach to set your plan.</div>
             )}
           </Section>
         </div>
@@ -340,7 +324,7 @@ function DashboardApp({ user, onLogout }) {
 
       {error && (<div className="fixed bottom-4 right-4 bg-rose-50 text-rose-700 border border-rose-200 px-3 py-2 rounded-lg shadow">{error}</div>)}
 
-      <footer className="max-w-6xl mx-auto p-4 text-xs text-slate-500"><div className="flex items-center gap-2"><Info className="w-4 h-4" /><span>Demo UI. GraphQL and services optional; falls back to mock data if offline.</span></div></footer>
+  <footer className="max-w-6xl mx-auto p-4 text-xs text-slate-500"><div className="flex items-center gap-2"><Info className="w-4 h-4" /><span>Uses your configured tariff, appliances, CO₂ and solar. If services are offline, some sections may be empty.</span></div></footer>
   </div>
   {showCoach && (
     <CoachWizard userId={userId} onClose={()=>setShowCoach(false)} onComplete={()=>setShowCoach(false)} />

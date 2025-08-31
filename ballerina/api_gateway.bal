@@ -65,7 +65,14 @@ service /graphql on new graphql:Listener(port_graphql) {
     }
 
     resource function get savingsEstimate(string userId, string date) returns Savings|error {
-        return { todayLKR: 85.0, monthLKR: 1450.0 };
+        // basic proxy to billing for monthly projection and estimate a daily value (roughly month/30)
+        http:Client bill = checkpanic new ("http://localhost:8091");
+        http:Response r = check bill->get(string `/billing/projection?userId=${userId}&eomKWh=150`);
+        json j = check r.getJsonPayload();
+        MonthlyProjection mp = check j.cloneWithType(MonthlyProjection);
+        decimal monthLKR = mp.totalCostRs;
+        decimal todayLKR = monthLKR / <decimal>30.0;
+        return { todayLKR, monthLKR };
     }
 
     resource function get explain(string recId) returns Explanation[]|error {
