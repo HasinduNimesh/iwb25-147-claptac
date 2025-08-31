@@ -197,8 +197,8 @@ export default function CoachWizard({ userId, onComplete, onClose }) {
   const j = res && await res.json().catch(()=>({ ok:false }));
   if (!res.ok || !j?.ok) throw new Error('Failed to save CO2');
       } else {
-        const values = (co2Profile || '').split(/[\s,]+/).map(Number).filter(v => Number.isFinite(v));
-  const res = await fetch(`/config/co2model?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots48: values }) });
+    const values = (co2Profile || '').split(/[\s,]+/).map(Number).filter(v => Number.isFinite(v));
+    const res = await fetch(`/config/co2model?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modelType: 'PROFILE_48', profile: values }) });
   const j = res && await res.json().catch(()=>({ ok:false }));
   if (!res.ok || !j?.ok) throw new Error('Failed to save CO2 model');
       }

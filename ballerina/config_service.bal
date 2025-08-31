@@ -1,5 +1,34 @@
 import ballerina/http;
 
+// Helper to safely parse an appliance JSON map into ApplianceCfg with defaults
+function parseApplianceCfg(map<json> m) returns ApplianceCfg {
+    string id = "dev";
+    json? jid = m["id"];
+    if jid is string { id = jid; }
+
+    string name = "Device";
+    json? jname = m["name"];
+    if jname is string { name = jname; }
+
+    decimal rated = 0.0;
+    json? jr = m["ratedPowerW"];
+    if jr is decimal { rated = jr; } else if jr is int { rated = <decimal>jr; }
+
+    int minutes = 0;
+    json? jm = m["cycleMinutes"];
+    if jm is int { minutes = jm; } else if jm is decimal { minutes = <int>jm; }
+
+    string latest = "22:00";
+    json? jl = m["latestFinish"];
+    if jl is string { latest = jl; }
+
+    boolean curfew = false;
+    json? jc = m["noiseCurfew"];
+    if jc is boolean { curfew = jc; } else if jc is string { curfew = jc.toLowerAscii() == "true"; }
+
+    return { id: id, name: name, ratedPowerW: rated, cycleMinutes: minutes, latestFinish: latest, noiseCurfew: curfew };
+}
+
 public type UpsertResponse record { boolean ok; };
 
 configurable int port_config = 8090;
@@ -67,26 +96,20 @@ service /config on new http:Listener(port_config) {
     resource function post appliances(string userId, @http:Payload json body) returns UpsertResponse|error {
         ApplianceCfg[] cfg = [];
         if body is json[] {
-            foreach json j in body { map<json> m = <map<json>>j; cfg.push({
-                id: <string>(m.get("id") ?: "dev"),
-                name: <string>(m.get("name") ?: "Device"),
-                ratedPowerW: <decimal>(m.get("ratedPowerW") ?: 0.0),
-                cycleMinutes: <int>(m.get("cycleMinutes") ?: 0),
-                latestFinish: <string>(m.get("latestFinish") ?: "22:00"),
-                noiseCurfew: <boolean>(m.get("noiseCurfew") ?: false)
-            }); }
+            foreach json j in body {
+                if j is map<json> { cfg.push(parseApplianceCfg(j)); }
+            }
         } else if body is map<json> {
             json items = body["items"] ?: [];
             if items is json[] {
-                foreach json j in items { map<json> m = <map<json>>j; cfg.push({
-                    id: <string>(m.get("id") ?: "dev"),
-                    name: <string>(m.get("name") ?: "Device"),
-                    ratedPowerW: <decimal>(m.get("ratedPowerW") ?: 0.0),
-                    cycleMinutes: <int>(m.get("cycleMinutes") ?: 0),
-                    latestFinish: <string>(m.get("latestFinish") ?: "22:00"),
-                    noiseCurfew: <boolean>(m.get("noiseCurfew") ?: false)
-                }); }
+                foreach json j in items { if j is map<json> { cfg.push(parseApplianceCfg(j)); } }
+            } else {
+                // Single object case
+                cfg.push(parseApplianceCfg(body));
             }
+        } else {
+            // Unsupported payload; do not change state
+            return { ok: false };
         }
         setAppliances(userId, cfg);
         return { ok: true };
