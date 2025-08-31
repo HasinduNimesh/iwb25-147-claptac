@@ -341,5 +341,5 @@ service /auth on new http:Listener(port_auth) {
 
 // Main service starter (commented out to avoid conflicts)
 // public function main() returns error? {
-//     log:printInfo("Starting Lanka Watt Wise Auth Service on port " + port_auth.toString());
+//     log:printInfo("Starting EcoMeter Auth Service on port " + port_auth.toString());
 // }

@@ -1,8 +1,8 @@
-# LankaWattWise Architecture
+# EcoMeter Architecture
 
 ## Overview
 
-LankaWattWise is an ontology-driven energy advice platform for Sri Lanka, integrating Ballerina microservices, a triplestore (Fuseki), MQTT IoT ingest, and a web frontend.
+EcoMeter is an ontology-driven energy advice platform for Sri Lanka, integrating Ballerina microservices, a triplestore (Fuseki), MQTT IoT ingest, and a web frontend.
 
 ### Key Components
 - **Ontology (OWL)**: Models appliances, tariffs, time windows, weather, etc.

@@ -1,4 +1,4 @@
-# Start all services for Lanka Watt Wise (Windows PowerShell)
+# Start all services for EcoMeter (Windows PowerShell)
 # - Starts Docker dependencies (Fuseki, MQTT)
 # - Starts all Ballerina services (multiple windows)
 # - Starts the React webapp (Vite dev server)

@@ -383,7 +383,7 @@ function DashboardApp({ user, onLogout }) {
       <header className="sticky top-0 z-30 backdrop-blur bg-white/70 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <Sparkles className="w-6 h-6 text-emerald-600" />
-          <h1 className="text-xl font-bold">LankaWattWise</h1>
+          <h1 className="text-xl font-bold">EcoMeter</h1>
           <Pill className="ml-2 bg-emerald-100 text-emerald-700">Ontology-Driven</Pill>
           <div className="ml-auto flex items-center gap-2">
             <Calendar className="w-4 h-4 text-slate-500" />
@@ -612,7 +612,7 @@ function DashboardApp({ user, onLogout }) {
   );
 }
 
-export default function LankaWattWiseApp() {
+export default function EcoMeterApp() {
   const { user, isAuthenticated, login, signup, logout, loading } = useAuth();
   const [showSignup, setShowSignup] = useState(false);
 
@@ -632,7 +632,7 @@ export default function LankaWattWiseApp() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
         <div className="max-w-md w-full mx-4">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Lanka Watt Wise</h1>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">EcoMeter</h1>
             <p className="text-slate-600 dark:text-slate-400">Smart Energy Management System</p>
           </div>
 
