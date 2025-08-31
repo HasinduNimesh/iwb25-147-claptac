@@ -1,0 +1,45 @@
+{
+  "Domestic": {
+    "BlockTariff": {
+      "0-30": {
+        "energyCharge_LKR_per_kWh": 6.00,
+        "fixedCharge_LKR_per_month": 100.00
+      },
+      "31-60": {
+        "energyCharge_LKR_per_kWh": 9.00,
+        "fixedCharge_LKR_per_month": 250.00
+      },
+      "61-90": {
+        "energyCharge_LKR_per_kWh": 18.00,
+        "fixedCharge_LKR_per_month": 400.00
+      },
+      "91-120": {
+        "energyCharge_LKR_per_kWh": 30.00,
+        "fixedCharge_LKR_per_month": 1000.00
+      },
+      "121-180": {
+        "energyCharge_LKR_per_kWh": 42.00,
+        "fixedCharge_LKR_per_month": 1500.00
+      },
+      "Above180": {
+        "energyCharge_LKR_per_kWh": 65.00,
+        "fixedCharge_LKR_per_month": 2000.00
+      }
+    },
+    "TimeOfUse": {
+      "OffPeak": {
+        "timeWindow": "22:30 - 05:30",
+        "energyCharge_LKR_per_kWh": 24.00
+      },
+      "Day": {
+        "timeWindow": "05:30 - 18:30",
+        "energyCharge_LKR_per_kWh": 35.00
+      },
+      "Peak": {
+        "timeWindow": "18:30 - 22:30",
+        "energyCharge_LKR_per_kWh": 72.00
+      },
+      "fixedCharge_LKR_per_month": 2000.00
+    }
+  }
+}
