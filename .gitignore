@@ -16,7 +16,7 @@ Desktop.ini
 .env
 **/.env
 **/.env.*
-deploy/.env
+
 
 # Ballerina build artifacts
 ballerina/target/
