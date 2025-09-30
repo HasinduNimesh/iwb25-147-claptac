@@ -115,9 +115,24 @@ class ErrorBoundary extends React.Component {
 }
 
 const Pill = ({ children, className = "" }) => (<span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${className}`}>{children}</span>);
-function Section({ title, icon: Icon, right, children }) { return (<div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
-  <div className="flex items-center justify-between mb-3"><div className="flex items-center gap-2 text-slate-700 dark:text-slate-200">{Icon && <Icon className="w-5 h-5" />}<h2 className="text-lg font-semibold">{title}</h2></div><div>{right}</div></div>{children}
-</div>); }
+function Section({ title, icon: Icon, right, children }) {
+  return (
+    <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200 min-w-0">
+          {Icon && <Icon className="w-5 h-5 shrink-0" />}
+          <h2 className="text-lg font-semibold truncate">{title}</h2>
+        </div>
+        {right && (
+          <div className="w-full sm:w-auto sm:ml-auto mt-2 sm:mt-0">
+            {right}
+          </div>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
 function SavingsChart({ data }) { return (
   <div className="h-40 w-full"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
     <defs><linearGradient id="grad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.4} /><stop offset="95%" stopColor="#22c55e" stopOpacity={0} /></linearGradient></defs>
@@ -379,19 +394,19 @@ function DashboardApp({ user, onLogout }) {
 
   return (
     <ErrorBoundary>
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-950 text-slate-900 dark:text-slate-100">
+  <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-950 text-slate-900 dark:text-slate-100">
       <header className="sticky top-0 z-30 backdrop-blur bg-white/70 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3 gap-y-2">
           <Sparkles className="w-6 h-6 text-emerald-600" />
           <h1 className="text-xl font-bold">EcoMeter</h1>
           <Pill className="ml-2 bg-emerald-100 text-emerald-700">Ontology-Driven</Pill>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2 min-w-0">
             <Calendar className="w-4 h-4 text-slate-500" />
             <input type="date" className="px-2 py-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/50" value={date} onChange={(e) => setDate(e.target.value)} />
             {/* user selection removed; using authenticated user */}
-            <div className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-300 dark:border-slate-700">
+            <div className="hidden md:flex items-center gap-2 md:ml-4 md:pl-4 md:border-l md:border-slate-300 md:dark:border-slate-700">
               <User className="w-4 h-4 text-slate-500" />
-              <span className="text-sm text-slate-600 dark:text-slate-400">{user?.email}</span>
+              <span className="text-sm text-slate-600 dark:text-slate-400 truncate max-w-[40ch]">{user?.email}</span>
               <button 
                 onClick={onLogout}
                 className="flex items-center gap-1 px-2 py-1 text-sm text-slate-600 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -401,6 +416,14 @@ function DashboardApp({ user, onLogout }) {
                 <span className="hidden sm:inline">Sign out</span>
               </button>
             </div>
+            {/* Mobile quick actions */}
+            <button
+              onClick={onLogout}
+              className="md:hidden ml-auto inline-flex items-center gap-1 px-2 py-1 text-sm text-slate-600 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </header>
@@ -464,10 +487,10 @@ function DashboardApp({ user, onLogout }) {
           </Section>
         </div>
         <div className="col-span-1 lg:col-span-2 space-y-4">
-          <Section title="Recommended Plan" icon={Plug} right={<div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-sm text-slate-600"><Scale className="w-4 h-4" /> <span>Money</span>
-              <input aria-label="alpha" type="range" min="0" max="1" step="0.1" value={alpha} onChange={(e)=>setAlpha(parseFloat(e.target.value))} /> <span>CO2</span></div>
-            <button className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-sm hover:opacity-90" onClick={async()=>{
+          <Section title="Recommended Plan" icon={Plug} right={<div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm text-slate-600 w-full sm:w-auto"><Scale className="w-4 h-4" /> <span>Money</span>
+              <input className="w-full sm:w-40" aria-label="alpha" type="range" min="0" max="1" step="0.1" value={alpha} onChange={(e)=>setAlpha(parseFloat(e.target.value))} /> <span>CO2</span></div>
+            <button className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-sm hover:opacity-90 w-full sm:w-auto" onClick={async()=>{
               const res = await fetch('/scheduler/optimize', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId, date, alpha }) }).catch(()=>null);
               const j = res && res.ok ? await res.json().catch(()=>null) : null;
               if (j?.plan) setPlan(j.plan);
