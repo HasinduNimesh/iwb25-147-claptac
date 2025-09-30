@@ -628,47 +628,11 @@ export default function EcoMeterApp() {
 
   // If not authenticated, show login/signup screen (still no extra hooks below)
   if (!isAuthenticated()) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
-        <div className="max-w-md w-full mx-4">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">EcoMeter</h1>
-            <p className="text-slate-600 dark:text-slate-400">Smart Energy Management System</p>
-          </div>
-
-          {showSignup ? (
-            <div>
-              <Signup 
-                onSignup={(u) => login(u)}
-                onSwitchToLogin={() => setShowSignup(false)}
-              />
-              <div className="text-center mt-4">
-                <button 
-                  onClick={() => setShowSignup(false)}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  Already have an account? Sign in
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <Login 
-                onLogin={(u) => login(u)}
-                onSwitchToSignup={() => setShowSignup(true)}
-              />
-              <div className="text-center mt-4">
-                <button 
-                  onClick={() => setShowSignup(true)}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  Don't have an account? Sign up
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+    // Render full-screen auth pages directly (they already include their own layout)
+    return showSignup ? (
+      <Signup onSignup={(u) => login(u)} onSwitchToLogin={() => setShowSignup(false)} />
+    ) : (
+      <Login onLogin={(u) => login(u)} onSwitchToSignup={() => setShowSignup(true)} />
     );
   }
 
