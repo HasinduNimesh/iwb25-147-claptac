@@ -46,7 +46,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
     r180p: String(blockT['Above180']?.energyCharge_LKR_per_kWh ?? ''),
     fixed: '', // will derive from usedUnits when user enters consumption
     startDate: '',
-    usedUnits: ''
+    usedUnits: '0' // changed from '' to '0' so it loads with value 0
   };
   const defaultTouRates = {
     offpeak: String(touT.OffPeak?.energyCharge_LKR_per_kWh ?? ''),
@@ -287,7 +287,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
             {tariffType === 'BLOCK' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="text-sm">Billing cycle start date</label><input type="date" className="w-full border rounded px-2 py-1" value={blockRates.startDate} onChange={e=>setBlockRates({...blockRates, startDate:e.target.value})}/></div>
-                <div><label className="text-sm">Used units this month</label><input type="number" className="w-full border rounded px-2 py-1" value={blockRates.usedUnits} onChange={e=>{
+                <div><label className="text-sm">Used units this month</label><input type="number" placeholder="Enter your used units" className="w-full border rounded px-2 py-1" value={blockRates.usedUnits} onChange={e=>{
                   const used = e.target.value;
                   // derive fixed charge from national tariff table
                   const u = Number(used);
