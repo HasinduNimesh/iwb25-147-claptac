@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, Leaf } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import appLogo from '../images/logo.png';
 
 const Login = ({ onLogin, onSwitchToSignup }) => {
   const [formData, setFormData] = useState({
@@ -85,12 +86,14 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-900 to-slate-950 text-slate-100 flex items-center justify-center p-4">
   <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-white/5 backdrop-blur">
-        {/* Brand / Feature side */}
+    {/* Brand / Feature side */}
         <div className="hidden md:flex flex-col justify-between p-8 bg-gradient-to-br from-emerald-600 to-blue-600 text-white">
           <div>
             <div className="flex items-center gap-3">
-              <div className="bg-white/20 p-2 rounded-md"><Leaf className="w-6 h-6" aria-hidden="true" /></div>
-              <span className="text-lg font-semibold">EcoMeter</span>
+              <div className="bg-white/20 p-1.5 rounded-md">
+                <img src={appLogo} alt="LankaWatteWise logo" className="w-7 h-7 rounded object-cover ring-1 ring-white/30" />
+              </div>
+              <span className="text-lg font-semibold">LankaWatteWise</span>
             </div>
             <h2 className="mt-6 text-3xl font-bold leading-tight">Welcome back</h2>
             <p className="mt-2 text-white/90">Sign in to manage your energy usage, bills, and savings insights.</p>
@@ -101,13 +104,11 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
             <li className="flex items-start gap-2 text-white/90"><span className="mt-1">•</span><span>Privacy‑first, you control your data</span></li>
           </ul>
         </div>
-        {/* Form side */}
+  {/* Form side */}
         <div className="p-8 bg-white/90 text-slate-900">
           <div className="md:hidden text-center mb-6">
-            <div className="mx-auto w-12 h-12 bg-emerald-100 text-emerald-700 flex items-center justify-center rounded-lg mb-2">
-              <Leaf className="w-6 h-6" aria-hidden="true" />
-            </div>
-            <h1 className="text-2xl font-bold">EcoMeter</h1>
+            <img src={appLogo} alt="LankaWatteWise logo" className="mx-auto w-12 h-12 rounded-lg mb-2 object-cover ring-1 ring-emerald-200" />
+            <h1 className="text-2xl font-bold">LankaWatteWise</h1>
             <p className="text-slate-600">Sign in to your account</p>
           </div>
 
@@ -186,7 +187,7 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
 
           <div className="mt-6 text-center">
             <p className="text-slate-600">
-              Dont have an account?{' '}
+              Don't have an account?{' '}
               <button
                 onClick={onSwitchToSignup}
                 className="text-emerald-700 hover:text-emerald-800 font-medium"

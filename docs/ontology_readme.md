@@ -1,4 +1,4 @@
-# EcoMeter Ontology
+# LankaWatteWise Ontology
 
 This ontology models Sri Lankan appliances, tariffs, time-of-use windows, weather, solar, occupancy, and constraints for explainable energy advice.
 

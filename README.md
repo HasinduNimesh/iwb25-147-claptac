@@ -1,4 +1,4 @@
-# EcoMeter
+# LankaWatteWise
 
 Ontology‑driven energy advice for Sri Lanka, powered by Ballerina microservices with a React web app.
 

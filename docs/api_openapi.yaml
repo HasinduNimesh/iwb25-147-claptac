@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://json.schemastore.org/openapi-3.0.json
 openapi: "3.0.3"
 info:
-  title: EcoMeter API
+  title: LankaWatteWise API
   version: "0.1.0"
   description: REST endpoints surfaced by the API gateway/advice service.
 servers:

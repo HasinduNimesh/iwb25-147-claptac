@@ -6,6 +6,7 @@ import { useAuth } from './AuthContext.jsx';
 import Login from './Login.jsx';
 import Signup from './Signup.jsx';
 import CoachWizard from './CoachWizard.jsx';
+import appLogo from '../images/logo.png';
 
 const GQL_URL = "/graphql";
 async function gql(query, variables = {}) {
@@ -397,8 +398,8 @@ function DashboardApp({ user, onLogout }) {
   <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-950 text-slate-900 dark:text-slate-100">
       <header className="sticky top-0 z-30 backdrop-blur bg-white/70 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3 gap-y-2">
-          <Sparkles className="w-6 h-6 text-emerald-600" />
-          <h1 className="text-xl font-bold">EcoMeter</h1>
+          <img src={appLogo} alt="LankaWatteWise logo" className="w-7 h-7 rounded-md object-cover" />
+          <h1 className="text-xl font-bold">LankaWatteWise</h1>
           <Pill className="ml-2 bg-emerald-100 text-emerald-700">Ontology-Driven</Pill>
           <div className="ml-auto flex items-center gap-2 min-w-0">
             <Calendar className="w-4 h-4 text-slate-500" />
@@ -635,7 +636,7 @@ function DashboardApp({ user, onLogout }) {
   );
 }
 
-export default function EcoMeterApp() {
+export default function LankaWatteWiseApp() {
   const { user, isAuthenticated, login, signup, logout, loading } = useAuth();
   const [showSignup, setShowSignup] = useState(false);
 

@@ -1,5 +1,5 @@
 <#
-Reset EcoMeter demo data: Fuseki dataset + in-memory app state
+Reset LankaWatteWise demo data: Fuseki dataset + in-memory app state
 Usage:
   powershell -ExecutionPolicy Bypass -File .\scripts\reset-data.ps1 -UserId demo
 #>
@@ -49,7 +49,7 @@ function Set-ConfigValue {
   return $false
 }
 
-Write-Host '--- EcoMeter reset starting ---' -ForegroundColor Cyan
+Write-Host '--- LankaWatteWise reset starting ---' -ForegroundColor Cyan
 
 # 1) Reset Fuseki dataset `lww`
 $admin = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes('admin:admin'))
@@ -90,4 +90,4 @@ Set-ConfigValue -Endpoint 'tasks' -UserId $UserId -JsonBody '[]' | Out-Null
 Set-ConfigValue -Endpoint 'co2' -UserId $UserId -JsonBody '{}' | Out-Null
 Set-ConfigValue -Endpoint 'solar' -UserId $UserId -JsonBody '{}' | Out-Null
 
-Write-Host '--- EcoMeter reset complete ---' -ForegroundColor Green
+Write-Host '--- LankaWatteWise reset complete ---' -ForegroundColor Green
