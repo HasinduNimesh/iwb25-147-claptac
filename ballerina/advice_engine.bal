@@ -46,6 +46,13 @@ service /advice on new http:Listener(port_advice) {
         // Gather user context
         ApplianceCfg[] userAppl = getUserAppliances(userId);
         TariffConfig? t = getTariff(userId);
+        // If user is on a BLOCK tariff, skip time-based recommendations entirely
+        if t is TariffConfig {
+            if t.tariffType == "BLOCK" {
+                log:printDebug("BLOCK tariff detected for user=" + userId + "; returning no time-based recommendations");
+                return [];
+            }
+        }
         TOUWindow[] windows = [];
         if t is TariffConfig && t.tariffType == "TOU" {
             windows = <TOUWindow[]>(t?.windows ?: []);

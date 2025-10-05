@@ -33,6 +33,8 @@ function normalizeWindows(input) {
     rateLKR: w.rateLKR != null ? w.rateLKR : (w.rateLKRPerKWh != null ? w.rateLKRPerKWh : 0)
   }));
 }
+function isTOU(t) { return t && (t.tariffType === 'TOU' || (t.tou && !t.block)); }
+function isBLOCK(t) { return t && (t.tariffType === 'BLOCK' || (!!t.block)); }
 // Client-side fallback: estimate monthly bill using tariff config
 function computeBillPreviewFromTariff(tariff, monthlyKWh = 150) {
   try {
@@ -265,12 +267,15 @@ function DashboardApp({ user, onLogout }) {
           fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null),
           fetch(`/config/co2?userId=${encodeURIComponent(userId)}`).catch(() => null)
         ]);
-        if (cancelled) return;
+    if (cancelled) return;
 
-        setHealth(!!data?.currentPlan);
-        setPlan(Array.isArray(data?.currentPlan) ? data.currentPlan : []);
+    // Parse tariff first, then decide plan/health based on tariff type
+    const tariffJson = tRes && tRes.ok ? await tRes.json().catch(() => null) : null;
+    const tou = isTOU(tariffJson);
+    // Only consider plan for TOU users; BLOCK users will intentionally get no time-based plan
+    setHealth(tou ? !!data?.currentPlan : true);
+    setPlan(tou && Array.isArray(data?.currentPlan) ? data.currentPlan : []);
 
-  const tariffJson = tRes && tRes.ok ? await tRes.json().catch(() => null) : null;
         setTariff(tariffJson || null);
 
         const applJson = aRes && aRes.ok ? await aRes.json().catch(() => null) : null;
@@ -476,7 +481,27 @@ function DashboardApp({ user, onLogout }) {
             <div className="flex items-end gap-4"><div><div className="text-3xl font-extrabold">{fmtMoneyLKR(totalSaving)}</div><div className="text-sm text-slate-500">Estimated saving for {date} from your plan</div></div></div>
             <div className="mt-3"><SavingsChart data={buildSavingsSeries(usage, plan)} /></div>
           </Section>
-          <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>{tariff ? <TariffBar windows={normalizeWindows(tariff)} /> : <div className="text-slate-500">Configure your tariff in the Coach.</div>}</Section>
+          {isTOU(tariff) ? (
+            <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>
+              {tariff ? <TariffBar windows={normalizeWindows(tariff)} /> : <div className="text-slate-500">Configure your tariff in the Coach.</div>}
+            </Section>
+          ) : isBLOCK(tariff) ? (
+            <Section title="Tariff (Block Rates)" icon={Info}>
+              {Array.isArray(tariff?.blocks) && tariff.blocks.length > 0 ? (
+                <div className="flex flex-wrap gap-2 text-sm">
+                  {tariff.blocks.map((b,i)=> (
+                    <Pill key={i} className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                      Up to {b.uptoKWh} kWh: {fmtMoneyLKR(b.rateLKR)} /kWh
+                    </Pill>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-slate-500">Configure your block tariff in the Coach.</div>
+              )}
+            </Section>
+          ) : (
+            <Section title="Tariff" icon={Info}><div className="text-slate-500">Configure your tariff in the Coach.</div></Section>
+          )}
           <Section title="Bill Preview" icon={Receipt}>
             {bill ? (
               <div className="text-sm text-slate-600">
@@ -525,6 +550,7 @@ function DashboardApp({ user, onLogout }) {
           </Section>
         </div>
         <div className="col-span-1 lg:col-span-2 space-y-4">
+          {isTOU(tariff) && (
           <Section title="Recommended Plan" icon={Plug} right={<div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 text-sm text-slate-600 w-full sm:w-auto"><Scale className="w-4 h-4" /> <span>Money</span>
               <input className="w-full sm:w-40" aria-label="alpha" type="range" min="0" max="1" step="0.1" value={alpha} onChange={(e)=>setAlpha(parseFloat(e.target.value))} /> <span>CO2</span></div>
@@ -562,6 +588,7 @@ function DashboardApp({ user, onLogout }) {
               </div>
             )}
           </Section>
+          )}
 
           <Section title="Tasks" icon={Layers}>
             <div className="text-sm text-slate-600 mb-2">Month-to-date usage: <b>{mtdKWh}</b> kWh</div>
