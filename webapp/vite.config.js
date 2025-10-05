@@ -21,6 +21,7 @@ export default defineConfig({
       '/config': { target: 'http://localhost:9080', changeOrigin: true },
       '/billing': { target: 'http://localhost:9080', changeOrigin: true },
       '/scheduler': { target: 'http://localhost:9080', changeOrigin: true },
+      '/reports': { target: 'http://localhost:9080', changeOrigin: true },
       // Auth direct to auth service
       '/auth': { target: 'http://localhost:8087', changeOrigin: true }
     }

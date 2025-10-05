@@ -200,6 +200,12 @@ service / on new http:Listener(port_ui) {
     return check r.getJsonPayload();
   }
 
+  // Reports proxy used by the UI for charts/MTD usage
+  resource function get reports/usage(string userId, int days = 31) returns json|error {
+    http:Response r = check reportsC->get(string `/reports/usage?userId=${userId}&days=${days}`);
+    return check r.getJsonPayload();
+  }
+
   // New config model proxies
   resource function post config/plan(string userId, @http:Payload json body) returns json|error {
     http:Response r = check configC->post(string `/config/plan?userId=${userId}`, body);

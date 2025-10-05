@@ -92,8 +92,24 @@ function normalizeAppliances(input) {
 function todayISOInColombo() {
   const d = new Date(); const y = d.getFullYear(); const m = `${d.getMonth() + 1}`.padStart(2, "0"); const dd = `${d.getDate()}`.padStart(2, "0"); return `${y}-${m}-${dd}`;
 }
-// Optional: demo chart data placeholder (UI-only, not used for calculations)
-const mockSavingsSeries = Array.from({ length: 14 }).map((_, i) => ({ day: i + 1, saved: Math.round(80 + Math.random() * 40) }));
+// Build a savings series from recent usage and today's plan savings
+function buildSavingsSeries(usage, plan) {
+  try {
+    const days = (Array.isArray(usage) ? usage : []).slice(-14);
+    const series = days.map((_, idx) => ({ day: idx + 1, saved: 0 }));
+    const totalPlanSave = Array.isArray(plan)
+      ? plan.reduce((s, r) => s + (Number(r.estSavingLKR) || 0), 0)
+      : 0;
+    if (series.length > 0) {
+      series[series.length - 1].saved = Math.round(totalPlanSave);
+    }
+    return series.length > 0
+      ? series
+      : Array.from({ length: 14 }).map((_, i) => ({ day: i + 1, saved: 0 }));
+  } catch (_) {
+    return Array.from({ length: 14 }).map((_, i) => ({ day: i + 1, saved: 0 }));
+  }
+}
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -326,7 +342,8 @@ function DashboardApp({ user, onLogout }) {
 
   // Simple Tasks editor state (local-only list + post to backend)
   const [tasksLocal, setTasksLocal] = React.useState([]);
-  const [mtdKWh, setMtdKWh] = React.useState(58); // assume recent usage; could be sourced from telemetry later
+  const [mtdKWh, setMtdKWh] = React.useState(58);
+  const [usage, setUsage] = React.useState([]);
   const [bw, setBw] = React.useState(null);
 
   // Compute kWh for current task input
@@ -352,6 +369,26 @@ function DashboardApp({ user, onLogout }) {
     const j = res && res.ok ? await res.json().catch(()=>null) : null;
     setBw(j||null);
   }
+
+  // Load recent usage for charts and MTD
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/reports/usage?userId=${encodeURIComponent(userId)}&days=31`).catch(() => null);
+        const data = res && res.ok ? await res.json().catch(() => []) : [];
+        if (cancelled) return;
+        const arr = Array.isArray(data) ? data : [];
+        setUsage(arr);
+        const ym = new Date().toISOString().slice(0, 7);
+        const mtd = arr
+          .filter(e => typeof e.date === 'string' && e.date.startsWith(ym))
+          .reduce((s, e) => s + (Number(e.kWh) || 0), 0);
+        setMtdKWh(Math.round(mtd));
+      } catch (_) { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
 
   // Persist a shiftable toggle by updating config overrides (noiseCurfew = !flexible)
   async function persistApplianceFlexible(id, flexible) {
@@ -437,14 +474,14 @@ function DashboardApp({ user, onLogout }) {
           </Section>
           <Section title="Today's Savings" icon={TrendingUp} right={<div className="flex items-center gap-2 text-sm text-slate-500"><Wifi className={`w-4 h-4 ${health ? "text-emerald-500" : "text-slate-400"}`} /><span>{health ? "Connected" : "Offline"}</span></div>}>
             <div className="flex items-end gap-4"><div><div className="text-3xl font-extrabold">{fmtMoneyLKR(totalSaving)}</div><div className="text-sm text-slate-500">Estimated saving for {date} from your plan</div></div></div>
-            <div className="mt-3"><SavingsChart data={mockSavingsSeries} /></div>
+            <div className="mt-3"><SavingsChart data={buildSavingsSeries(usage, plan)} /></div>
           </Section>
           <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>{tariff ? <TariffBar windows={normalizeWindows(tariff)} /> : <div className="text-slate-500">Configure your tariff in the Coach.</div>}</Section>
           <Section title="Bill Preview" icon={Receipt}>
             {bill ? (
               <div className="text-sm text-slate-600">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs px-2 py-0.5 rounded-full border {bill?.note?.toLowerCase?.().includes('local') ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-emerald-300 bg-emerald-50 text-emerald-700'}">
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${bill?.note?.toLowerCase?.().includes('local') ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-emerald-300 bg-emerald-50 text-emerald-700'}`}>
                     {bill?.note?.toLowerCase?.().includes('local') ? 'Local estimate' : 'Live'}
                   </span>
                   <span>For 150 kWh: <b>{fmtMoneyLKR(Math.round((bill.monthlyEstLKR || bill.estimatedCostLKR || 0)))}</b></span>
