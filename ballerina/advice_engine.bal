@@ -44,7 +44,7 @@ function hhmmToIso(string date, string hhmm) returns string {
 service /advice on new http:Listener(port_advice) {
     resource function get plan(string userId, string date) returns Recommendation[]|error {
         // Gather user context
-        ApplianceCfg[] userAppl = getAppliances(userId);
+        ApplianceCfg[] userAppl = getUserAppliances(userId);
         TariffConfig? t = getTariff(userId);
         TOUWindow[] windows = [];
         if t is TariffConfig && t.tariffType == "TOU" {

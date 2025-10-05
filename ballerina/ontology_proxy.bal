@@ -29,6 +29,10 @@ service /ontology on new http:Listener(port_ontology) {
             log:printInfo("Sending request to Fuseki...");
             http:Response httpResp = check fuseki->post("/query", req);
             log:printInfo("Received response from Fuseki, status: " + httpResp.statusCode.toString());
+            if httpResp.statusCode != 200 {
+                log:printWarn("Fuseki returned non-200 (" + httpResp.statusCode.toString() + ") for /query. Returning stub appliances. Ensure dataset 'lww' exists at " + fuseki_baseUrl + ".");
+                return [{ id: "pump-1", label: "Well Pump", flexibility: "shiftable" }, { id: "ac-1", label: "Bedroom AC", flexibility: "thermalStorage" }];
+            }
             j = check httpResp.getJsonPayload();
             log:printInfo("Response JSON: " + j.toString());
         } on fail var e {

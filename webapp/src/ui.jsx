@@ -39,7 +39,7 @@ function computeBillPreviewFromTariff(tariff, monthlyKWh = 150) {
     if (!tariff || typeof tariff !== 'object') return null;
     if (tariff.tariffType === 'TOU') {
       const ws = Array.isArray(tariff.windows) ? tariff.windows : [];
-      if (ws.length === 0) return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * 45) / 1000, note: 'Local estimate (TOU default)' };
+      if (ws.length === 0) return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * 38), note: 'Local estimate (TOU default at 38 LKR/kWh)' };
   const avg = ws.reduce((s, w) => s + Number(w.rateLKR || 0), 0) / ws.length;
   const fixed = Number(tariff.fixedLKR || 0);
   return { estimatedKWh: monthlyKWh, estimatedCostLKR: (monthlyKWh * avg) + fixed, note: 'Local estimate (TOU avg + fixed)' };
@@ -68,10 +68,10 @@ function computeBillPreviewFromTariff(tariff, monthlyKWh = 150) {
 // Client-side fallback: estimate CO2 projection for the month
 function computeProjectionFromConfig(co2Cfg, tariff, eomKWh = 150) {
   try {
-    const ef = Number(co2Cfg?.defaultKgPerKWh ?? 0.53);
+    const ef = Number(co2Cfg?.defaultKgPerKWh ?? 0.73); // Sri Lanka grid: ~0.73 kg CO2/kWh
     const totalCO2Kg = eomKWh * ef; // kg
   const bill = computeBillPreviewFromTariff(tariff, eomKWh);
-  const totalCostRs = bill ? bill.estimatedCostLKR : (eomKWh * 45);
+  const totalCostRs = bill ? bill.estimatedCostLKR : (eomKWh * 38); // Fallback to 38 LKR/kWh
     const treesRequired = (totalCO2Kg * 12) / 22; // 22 kg per tree per year
     return { totalKWh: eomKWh, totalCostRs, totalCO2Kg, treesRequired };
   } catch {}
@@ -589,9 +589,9 @@ function DashboardApp({ user, onLogout }) {
             <div className="flex flex-wrap gap-2 text-sm">
               <button className="px-3 py-1.5 rounded-lg border" onClick={async()=>{
                 const body = { utility:"CEB", tariffType:"TOU", windows:[
-                  {name:"Peak", startTime:"18:30", endTime:"22:30", rateLKR:70},
-                  {name:"Day", startTime:"05:30", endTime:"18:30", rateLKR:45},
-                  {name:"Off-Peak", startTime:"22:30", endTime:"05:30", rateLKR:25}
+                  {name:"Peak", startTime:"18:30", endTime:"22:30", rateLKR:68.0},
+                  {name:"Day", startTime:"05:30", endTime:"18:30", rateLKR:38.0},
+                  {name:"Off-Peak", startTime:"22:30", endTime:"05:30", rateLKR:16.5}
                 ]};
                 await fetch(`/config/tariff?userId=${userId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
                 // refetch tariff
@@ -602,19 +602,26 @@ function DashboardApp({ user, onLogout }) {
 
               <button className="px-3 py-1.5 rounded-lg border" onClick={async()=>{
                 const items = [
-                  { id:"pump", name:"Well Pump", ratedPowerW:750, cycleMinutes:30, latestFinish:"06:00", noiseCurfew:false },
-                  { id:"washer", name:"Washing Machine", ratedPowerW:500, cycleMinutes:60, latestFinish:"22:00", noiseCurfew:true }
+                  { id:"fridge", name:"Refrigerator", ratedPowerW:150, cycleMinutes:1440, latestFinish:"23:59", noiseCurfew:false },
+                  { id:"pump", name:"Water Pump", ratedPowerW:750, cycleMinutes:30, latestFinish:"06:00", noiseCurfew:false },
+                  { id:"washer", name:"Washing Machine", ratedPowerW:500, cycleMinutes:60, latestFinish:"22:00", noiseCurfew:true },
+                  { id:"ac", name:"Air Conditioner", ratedPowerW:1200, cycleMinutes:180, latestFinish:"23:00", noiseCurfew:false }
                 ];
                 await fetch(`/config/appliances?userId=${userId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(items)});
+                await reloadUserConfig(); // Reload to show new appliances
               }}>Save Appliances</button>
 
               <button className="px-3 py-1.5 rounded-lg border" onClick={async()=>{
-                await fetch(`/config/co2?userId=${userId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ defaultKgPerKWh:0.53 })});
-              }}>Set CO2 0.53</button>
+                await fetch(`/config/co2?userId=${userId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ defaultKgPerKWh:0.73 })});
+                // Re-fetch projection with new CO2 factor
+                const pRes = await fetch(`/billing/projection?userId=${encodeURIComponent(userId)}&eomKWh=150`).catch(()=>null);
+                const pJ = pRes && pRes.ok ? await pRes.json().catch(()=>null) : null;
+                if (pJ) setProjection(pJ);
+              }}>Set CO₂ 0.73 (LK Grid)</button>
 
               <button className="px-3 py-1.5 rounded-lg border" onClick={async()=>{
-                await fetch(`/config/solar?userId=${userId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ scheme:"NET_ACCOUNTING", exportPriceLKR:37 })});
-              }}>Set Solar (Net Accounting)</button>
+                await fetch(`/config/solar?userId=${userId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ scheme:"NET_ACCOUNTING", exportPriceLKR:22.0 })});
+              }}>Set Solar (22 LKR/kWh)</button>
             </div>
           </Section>
         </div>

@@ -1,5 +1,4 @@
 import ballerina/http;
-import ballerina/jwt;
 import ballerina/crypto;
 import ballerina/time;
 import ballerina/uuid;
@@ -80,13 +79,9 @@ function verifyPassword(string password, string hash) returns boolean {
 
 // JWT generation (simplified)
 function generateJWT(User user) returns string|error {
-    jwt:IssuerConfig issuerConfig = {
-        issuer: "lankawattwise-auth",
-        audience: ["lankawattwise-api"],
-        expTime: 900 // 15 minutes
-    };
-    
-    return jwt:issue(issuerConfig);
+    // Demo-safe opaque token to avoid signing key configuration complexity.
+    // If you want real JWTs, wire jwt:OutboundJwtConfig with a signing key and claims.
+    return uuid:createType1AsString();
 }
 
 function generateRefreshToken() returns string {

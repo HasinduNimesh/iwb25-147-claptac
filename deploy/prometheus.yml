@@ -1,0 +1,21 @@
+# Prometheus Configuration for LankaWatteWise
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'lankawattwise-monitor'
+
+# Scrape configurations
+scrape_configs:
+  # Ballerina services metrics
+  - job_name: 'ballerina-services'
+    static_configs:
+      - targets: ['lww_api_gateway:9797']
+        labels:
+          service: 'api_gateway'
+      
+  # Add more services if they expose metrics
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

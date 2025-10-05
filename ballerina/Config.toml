@@ -8,7 +8,7 @@ port_advice = 8083
 port_notify = 8084
 port_ingest = 8085
 port_config = 8090
-port_billing = 8093
+port_billing = 8091
 port_scheduler = 8092
 
 fuseki_baseUrl = "http://localhost:3030/lww"
