@@ -9,6 +9,7 @@ export default defineConfig({
     emptyOutDir: true
   },
   server: {
+    host: true, // listen on 0.0.0.0 for LAN access
     port: 5173,
     proxy: {
       // GraphQL and REST go through UI gateway
@@ -25,6 +26,7 @@ export default defineConfig({
     }
   },
   preview: {
+    host: true,
     port: 9081
     // No proxy in preview mode either
   }
