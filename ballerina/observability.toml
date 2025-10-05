@@ -1,0 +1,35 @@
+# Ballerina Observability Configuration
+# This file enables metrics, tracing, and logging for Grafana and Jaeger
+
+[ballerina.observe]
+# Enable observability
+enabled = true
+
+# Metrics configuration
+[ballerina.observe.metrics]
+enabled = true
+reporter = "prometheus"
+
+# Prometheus exporter configuration
+[ballerina.observe.metrics.prometheus]
+host = "0.0.0.0"
+port = 9797
+
+# Tracing configuration
+[ballerina.observe.tracing]
+enabled = true
+name = "jaeger"
+
+# Jaeger configuration
+[ballerina.observe.tracing.jaeger]
+agentHostname = "localhost"
+agentPort = 6831
+samplerType = "const"
+samplerParam = 1.0
+reporterFlushInterval = 2000
+reporterBufferSize = 1000
+
+# Optional: Remote sampler configuration
+[ballerina.observe.tracing.jaeger.sampler.remote]
+enabled = false
+hostPort = "localhost:5778"

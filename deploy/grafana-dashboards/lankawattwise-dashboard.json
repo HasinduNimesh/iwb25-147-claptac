@@ -1,0 +1,112 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "lankawattwise",
+    "title": "LankaWatteWise - System Overview",
+    "tags": ["ballerina", "energy", "sri-lanka"],
+    "timezone": "Asia/Colombo",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+        "type": "graph",
+        "title": "HTTP Request Rate",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "{{job}} - {{method}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "reqps", "label": "Requests/sec" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 2,
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+        "type": "graph",
+        "title": "Response Time",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95 latency",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Time" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 3,
+        "gridPos": { "x": 0, "y": 8, "w": 8, "h": 6 },
+        "type": "stat",
+        "title": "Total Recommendations Generated",
+        "targets": [
+          {
+            "expr": "sum(recommendations_total)",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "gridPos": { "x": 8, "y": 8, "w": 8, "h": 6 },
+        "type": "stat",
+        "title": "Active Users",
+        "targets": [
+          {
+            "expr": "count(count by (user_id) (user_requests_total))",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "gridPos": { "x": 16, "y": 8, "w": 8, "h": 6 },
+        "type": "stat",
+        "title": "Total Energy Optimized (kWh)",
+        "targets": [
+          {
+            "expr": "sum(energy_optimized_kwh)",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 },
+        "type": "table",
+        "title": "Service Health Status",
+        "targets": [
+          {
+            "expr": "up{job='ballerina-services'}",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "job": "Service",
+                "instance": "Instance",
+                "Value": "Status"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,252 @@
+import ballerina/sql;
+import ballerinax/mysql;
+import ballerina/log;
+
+// Database configuration
+configurable string dbHost = "localhost";
+configurable int dbPort = 3306;
+configurable string dbName = "lankawattwise";
+configurable string dbUser = "lww_user";
+configurable string dbPassword = "lww_pass";
+
+// MySQL client - COMMENTED OUT temporarily until MySQL is set up
+// Uncomment when you have MySQL running and configured
+// final mysql:Client dbClient = check new (
+//     host = dbHost,
+//     port = dbPort,
+//     user = dbUser,
+//     password = dbPassword,
+//     database = dbName
+// );
+
+// Initialize database tables
+public function initDatabase() returns error? {
+    log:printInfo("Initializing database schema...");
+    
+    // Users table
+    _ = check dbClient->execute(`
+        CREATE TABLE IF NOT EXISTS users (
+            user_id VARCHAR(255) PRIMARY KEY,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+    
+    // Tariff configurations table
+    _ = check dbClient->execute(`
+        CREATE TABLE IF NOT EXISTS tariff_configs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            utility VARCHAR(50),
+            tariff_type VARCHAR(20),
+            config_json JSON NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            INDEX idx_user (user_id)
+        )
+    `);
+    
+    // Appliances table
+    _ = check dbClient->execute(`
+        CREATE TABLE IF NOT EXISTS appliances (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            appliance_id VARCHAR(100) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            rated_power_w DECIMAL(10,2),
+            cycle_minutes INT,
+            latest_finish VARCHAR(10),
+            noise_curfew BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            UNIQUE KEY unique_user_appliance (user_id, appliance_id),
+            INDEX idx_user (user_id)
+        )
+    `);
+    
+    // Tasks table
+    _ = check dbClient->execute(`
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            task_id VARCHAR(100) NOT NULL,
+            appliance_id VARCHAR(100) NOT NULL,
+            duration_min INT,
+            earliest VARCHAR(10),
+            latest VARCHAR(10),
+            repeats_per_week INT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            UNIQUE KEY unique_user_task (user_id, task_id),
+            INDEX idx_user (user_id)
+        )
+    `);
+    
+    // CO2 configs table
+    _ = check dbClient->execute(`
+        CREATE TABLE IF NOT EXISTS co2_configs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            default_kg_per_kwh DECIMAL(10,4),
+            profile_json JSON,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            INDEX idx_user (user_id)
+        )
+    `);
+    
+    // Solar configs table
+    _ = check dbClient->execute(`
+        CREATE TABLE IF NOT EXISTS solar_configs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            scheme VARCHAR(50),
+            export_price_lkr DECIMAL(10,2),
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            INDEX idx_user (user_id)
+        )
+    `);
+    
+    // Bill history table for reports
+    _ = check dbClient->execute(`
+        CREATE TABLE IF NOT EXISTS bill_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            month VARCHAR(7) NOT NULL,
+            total_kwh DECIMAL(10,2),
+            total_cost_lkr DECIMAL(10,2),
+            total_co2_kg DECIMAL(10,2),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            UNIQUE KEY unique_user_month (user_id, month),
+            INDEX idx_user_month (user_id, month)
+        )
+    `);
+    
+    log:printInfo("Database schema initialized successfully");
+}
+
+// Save tariff configuration
+public function saveTariffConfig(string userId, json config) returns error? {
+    json utilityJson = check config.utility;
+    string utility = utilityJson is string ? utilityJson : "CEB";
+    json tariffTypeJson = check config.tariffType;
+    string tariffType = tariffTypeJson is string ? tariffTypeJson : "TOU";
+    string configJson = config.toJsonString();
+    
+    _ = check dbClient->execute(`
+        INSERT INTO tariff_configs (user_id, utility, tariff_type, config_json)
+        VALUES (${userId}, ${utility}, ${tariffType}, ${configJson})
+        ON DUPLICATE KEY UPDATE config_json = VALUES(config_json)
+    `);
+}
+
+// Get tariff configuration
+public function getTariffConfig(string userId) returns json|error? {
+    stream<record {| string config_json; |}, sql:Error?> resultStream = 
+        dbClient->query(`SELECT config_json FROM tariff_configs WHERE user_id = ${userId} ORDER BY updated_at DESC LIMIT 1`);
+    
+    record {|record {| string config_json; |} value;|}|sql:Error? next = resultStream.next();
+    check resultStream.close();
+    
+    if next is record {|record {| string config_json; |} value;|} {
+        return next.value.config_json.fromJsonString();
+    }
+    return ();
+}
+
+// Save appliances
+public function saveAppliances(string userId, json[] appliances) returns error? {
+    // Delete existing appliances for user
+    _ = check dbClient->execute(`DELETE FROM appliances WHERE user_id = ${userId}`);
+    
+    // Insert new appliances
+    foreach json appliance in appliances {
+        json idJson = check appliance.id;
+        string applianceId = idJson is string ? idJson : "";
+        
+        json nameJson = check appliance.name;
+        string name = nameJson is string ? nameJson : "";
+        
+        json powerJson = check appliance.ratedPowerW;
+        decimal ratedPowerW = powerJson is decimal ? powerJson : (powerJson is int ? <decimal>powerJson : 0.0);
+        
+        json minutesJson = check appliance.cycleMinutes;
+        int cycleMinutes = minutesJson is int ? minutesJson : (minutesJson is decimal ? <int>minutesJson : 0);
+        
+        json finishJson = check appliance.latestFinish;
+        string latestFinish = finishJson is string ? finishJson : "22:00";
+        
+        json curfewJson = check appliance.noiseCurfew;
+        boolean noiseCurfew = curfewJson is boolean ? curfewJson : false;
+        
+        _ = check dbClient->execute(`
+            INSERT INTO appliances (user_id, appliance_id, name, rated_power_w, cycle_minutes, latest_finish, noise_curfew)
+            VALUES (${userId}, ${applianceId}, ${name}, ${ratedPowerW}, ${cycleMinutes}, ${latestFinish}, ${noiseCurfew})
+        `);
+    }
+}
+
+// Get appliances
+public function getAppliances(string userId) returns json[]|error {
+    stream<record {| string id; string name; decimal ratedPowerW; int cycleMinutes; string latestFinish; boolean noiseCurfew; |}, sql:Error?> resultStream = 
+        dbClient->query(`SELECT appliance_id as id, name, rated_power_w as ratedPowerW, 
+                         cycle_minutes as cycleMinutes, latest_finish as latestFinish, 
+                         noise_curfew as noiseCurfew FROM appliances WHERE user_id = ${userId}`);
+    
+    json[] appliances = [];
+    check from var appliance in resultStream
+        do {
+            appliances.push(appliance.toJson());
+        };
+    
+    return appliances;
+}
+
+// Save bill history (for reports)
+public function saveBillHistory(string userId, string month, decimal kwh, decimal cost, decimal co2) returns error? {
+    _ = check dbClient->execute(`
+        INSERT INTO bill_history (user_id, month, total_kwh, total_cost_lkr, total_co2_kg)
+        VALUES (${userId}, ${month}, ${kwh}, ${cost}, ${co2})
+        ON DUPLICATE KEY UPDATE total_kwh = ${kwh}, total_cost_lkr = ${cost}, total_co2_kg = ${co2}
+    `);
+}
+
+// Get bill history for reports
+public function getBillHistory(string userId, int months = 12) returns json[]|error {
+    stream<record {| string month; decimal total_kwh; decimal total_cost_lkr; decimal total_co2_kg; string created_at; |}, sql:Error?> resultStream = 
+        dbClient->query(`
+            SELECT month, total_kwh, total_cost_lkr, total_co2_kg, created_at
+            FROM bill_history 
+            WHERE user_id = ${userId}
+            ORDER BY month DESC
+            LIMIT ${months}
+        `);
+    
+    json[] history = [];
+    check from var rec in resultStream
+        do {
+            history.push(rec.toJson());
+        };
+    
+    return history;
+}
+
+// Export to CSV (for reports)
+public function exportHistoryToCSV(string userId) returns string|error {
+    json[] history = check getBillHistory(userId, 24);
+    
+    string csv = "Month,kWh,Cost (LKR),CO2 (kg)\n";
+    foreach json item in history {
+        json monthJson = check item.month;
+        json kwhJson = check item.total_kwh;
+        json costJson = check item.total_cost_lkr;
+        json co2Json = check item.total_co2_kg;
+        
+        csv += string `${monthJson.toString()},${kwhJson.toString()},${costJson.toString()},${co2Json.toString()}\n`;
+    }
+    
+    return csv;
+}

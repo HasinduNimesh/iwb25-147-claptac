@@ -1,0 +1,1 @@
+{"utility":"CEB", "tariffType":"TOU", "windows":[{"name":"Off-Peak", "startTime":"22:30", "endTime":"05:30", "rateLKR":16.5}, {"name":"Day", "startTime":"05:30", "endTime":"18:30", "rateLKR":38.0}, {"name":"Peak", "startTime":"18:30", "endTime":"22:30", "rateLKR":16.5}]}

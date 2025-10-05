@@ -1,10 +1,11 @@
 {
   "windows": [
-    { "label": "Peak", "startTime": "18:30", "endTime": "21:30", "rateLKRPerKWh": 68.0 },
-    { "label": "Day", "startTime": "05:30", "endTime": "18:30", "rateLKRPerKWh": 30.0 },
-    { "label": "Off-Peak", "startTime": "21:30", "endTime": "05:30", "rateLKRPerKWh": 13.0 }
+    { "label": "Off-Peak", "startTime": "22:30", "endTime": "05:30", "rateLKRPerKWh": 16.5 },
+    { "label": "Day", "startTime": "05:30", "endTime": "18:30", "rateLKRPerKWh": 38.0 },
+    { "label": "Peak", "startTime": "18:30", "endTime": "22:30", "rateLKRPerKWh": 68.0 }
   ],
   "tariffs": [
-    { "plan": "TariffD", "windows": ["Peak", "Day", "Off-Peak"] }
-  ]
+    { "plan": "TariffD", "windows": ["Off-Peak", "Day", "Peak"] }
+  ],
+  "note": "Realistic CEB (Ceylon Electricity Board) Time-of-Use rates for Sri Lanka 2024-2025"
 }

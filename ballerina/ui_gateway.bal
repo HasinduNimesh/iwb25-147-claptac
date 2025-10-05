@@ -10,19 +10,32 @@ final http:Client gqlClient = checkpanic new (gqlUrlBase);
 // Local service clients
 final http:Client configC = checkpanic new ("http://localhost:8090");
 final http:Client billingC = checkpanic new ("http://localhost:8091");
+final http:Client reportsC = checkpanic new ("http://localhost:8094");
 final http:Client schedC = checkpanic new ("http://localhost:8092");
 final http:Client authC = checkpanic new ("http://localhost:8087");
 
 function renderIndex() returns http:Response|error {
-  // Try dist build first; fallback to public during dev
-  string|error htmlOrErr = io:fileReadString("../webapp/dist/index.html");
-  string html = htmlOrErr is string ? htmlOrErr : check io:fileReadString("../webapp/public/index.html");
+  // Try dist build first; then public; finally a simple inline fallback
+  string html = "";
+  var distRead = io:fileReadString("../webapp/dist/index.html");
+  if distRead is string {
+    html = distRead;
+  } else {
+    var pubRead = io:fileReadString("../webapp/public/index.html");
+    if pubRead is string {
+      html = pubRead;
+    } else {
+      html = "<!doctype html><html><head><meta charset='utf-8'><title>LankaWattWise</title></head><body><h1>LankaWattWise API Gateway</h1><p>UI build not found in image. Run the Vite dev server on the host or mount webapp/dist.</p></body></html>";
+    }
+  }
   http:Response res = new;
   res.setTextPayload(html, "text/html; charset=utf-8");
   return res;
 }
 
 service / on new http:Listener(port_ui) {
+  // Simple health check
+  resource function get healthz() returns string { return "ok"; }
   // Serve root path '/'
   resource function get .() returns http:Response|error {
     return renderIndex();

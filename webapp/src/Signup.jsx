@@ -150,8 +150,8 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" aria-hidden="true" />
                 <input type="email" id="email" name="email" value={formData.email} onChange={handleChange}
-                  className={`w-full pl-10 pr-3 py-2 rounded-md border shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.email ? 'border-red-400' : 'border-slate-300'}`}
-                  placeholder="you@example.com" disabled={loading} required autoComplete="email" />
+                  className={`w-full pl-10 pr-3 py-2 rounded-md border shadow-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.email ? 'border-red-400' : 'border-slate-300'}`}
+                  placeholder="hasindunimesh89@gmail.com" disabled={loading} required autoComplete="email" />
               </div>
               {errors.email && (<p className="mt-1 text-sm text-red-600">{errors.email}</p>)}
             </div>
@@ -161,9 +161,9 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" aria-hidden="true" />
                 <input type={showPassword ? 'text' : 'password'} id="password" name="password" value={formData.password} onChange={handleChange}
-                  className={`w-full pl-10 pr-10 py-2 rounded-md border shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.password ? 'border-red-400' : 'border-slate-300'}`}
+                  className={`w-full pl-10 pr-10 py-2 rounded-md border shadow-sm bg-slate-900 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.password ? 'border-red-400' : 'border-slate-600'}`}
                   placeholder="At least 8 characters" disabled={loading} required autoComplete="new-password" />
-                <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700" aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white" aria-label={showPassword ? 'Hide password' : 'Show password'}>
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
@@ -175,9 +175,9 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" aria-hidden="true" />
                 <input type={showConfirm ? 'text' : 'password'} id="confirmPassword" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange}
-                  className={`w-full pl-10 pr-10 py-2 rounded-md border shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.confirmPassword ? 'border-red-400' : 'border-slate-300'}`}
+                  className={`w-full pl-10 pr-10 py-2 rounded-md border shadow-sm bg-slate-900 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.confirmPassword ? 'border-red-400' : 'border-slate-600'}`}
                   placeholder="Confirm your password" disabled={loading} required autoComplete="new-password" />
-                <button type="button" onClick={() => setShowConfirm(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700" aria-label={showConfirm ? 'Hide confirmation' : 'Show confirmation'}>
+                <button type="button" onClick={() => setShowConfirm(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white" aria-label={showConfirm ? 'Hide confirmation' : 'Show confirmation'}>
                   {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
@@ -189,7 +189,7 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
               <div className="relative">
                 <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" aria-hidden="true" />
                 <input type="tel" id="mobile" name="mobile" value={formData.mobile} onChange={handleChange}
-                  className={`w-full pl-10 pr-3 py-2 rounded-md border shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.mobile ? 'border-red-400' : 'border-slate-300'}`}
+                  className={`w-full pl-10 pr-3 py-2 rounded-md border shadow-sm bg-slate-900 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.mobile ? 'border-red-400' : 'border-slate-600'}`}
                   placeholder="0771234567" disabled={loading} autoComplete="tel" />
               </div>
               {errors.mobile && (<p className="mt-1 text-sm text-red-600">{errors.mobile}</p>)}
@@ -198,10 +198,10 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
             <div>
               <label htmlFor="nic" className="block text-sm font-medium text-slate-700 mb-1">NIC Number</label>
               <div className="relative">
-                <IdCard className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" aria-hidden="true" />
+                <IdCard className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" aria-hidden="true" />
                 <input type="text" id="nic" name="nic" value={formData.nic} onChange={handleChange}
-                  className={`w-full pl-10 pr-3 py-2 rounded-md border shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.nic ? 'border-red-400' : 'border-slate-300'}`}
-                  placeholder="123456789V or 200012345678" disabled={loading} />
+                  className={`w-full pl-10 pr-3 py-2 rounded-md border shadow-sm bg-slate-200 text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.nic ? 'border-red-400' : 'border-slate-300'}`}
+                  placeholder="200230002332" disabled={loading} />
               </div>
               {errors.nic && (<p className="mt-1 text-sm text-red-600">{errors.nic}</p>)}
             </div>
@@ -209,10 +209,10 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
             <div>
               <label htmlFor="cebAccountNo" className="block text-sm font-medium text-slate-700 mb-1">CEB Account Number</label>
               <div className="relative">
-                <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" aria-hidden="true" />
+                <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" aria-hidden="true" />
                 <input type="text" id="cebAccountNo" name="cebAccountNo" value={formData.cebAccountNo} onChange={handleChange}
-                  className="w-full pl-10 pr-3 py-2 rounded-md border shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 border-slate-300"
-                  placeholder="Your electricity bill account number" disabled={loading} />
+                  className="w-full pl-10 pr-3 py-2 rounded-md border shadow-sm bg-slate-200 text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 border-slate-300"
+                  placeholder="125478598989" disabled={loading} />
               </div>
               <p className="mt-1 text-xs text-slate-500">Optional: Link your electricity account for bill management</p>
             </div>
