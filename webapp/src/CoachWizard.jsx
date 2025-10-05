@@ -1,6 +1,53 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import defaultTariff from './defaultTariff.json';
 
+function InfoIcon({ text }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [position, setPosition] = useState({ left: false, top: false });
+  const iconRef = React.useRef(null);
+  
+  const handleMouseEnter = () => {
+    setShowTooltip(true);
+    if (iconRef.current) {
+      // Get the icon's position in the viewport
+      const rect = iconRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      // If icon is in the right half of screen, show tooltip to the left
+      // If icon is in the bottom half of screen, show tooltip above
+      setPosition({
+        left: rect.left > viewportWidth / 2,
+        top: rect.top > viewportHeight / 2
+      });
+    }
+  };
+  
+  return (
+    <div className="relative inline-block ml-1">
+      <span 
+        ref={iconRef}
+        className="inline-flex items-center justify-center w-4 h-4 text-xs rounded-full bg-slate-200 text-slate-600 cursor-help"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setShowTooltip(false)}
+      >
+        i
+      </span>
+      {showTooltip && (
+        <div 
+          className={`absolute z-10 w-64 p-2 text-xs bg-white rounded shadow-lg border border-slate-200 ${position.top ? 'bottom-6' : 'top-6'}`}
+          style={{
+            [position.left ? 'right' : 'left']: '0',
+            whiteSpace: 'normal'
+          }}
+        >
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StepHeader({ title, subtitle }) {
   return (
     <div className="mb-4">
@@ -278,7 +325,10 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
           <div>
             <StepHeader title="Tariff Setup" subtitle="Tell us how your electricity is billed" />
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">Tariff Type</label>
+              <label className="block text-sm font-medium mb-1">
+                Tariff Type
+                <InfoIcon text="Select your electricity tariff type. Block tariffs charge different rates based on consumption levels. Time-of-Use tariffs charge different rates based on time of day." />
+              </label>
               <select className="border rounded px-2 py-1" value={tariffType} onChange={(e)=>setTariffType(e.target.value)}>
                 <option value="BLOCK">Block (Domestic Type 1)</option>
                 <option value="TOU">Time-of-Use (Domestic Type 2)</option>
@@ -286,8 +336,8 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
             </div>
             {tariffType === 'BLOCK' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="text-sm">Billing cycle start date</label><input type="date" className="w-full border rounded px-2 py-1" value={blockRates.startDate} onChange={e=>setBlockRates({...blockRates, startDate:e.target.value})}/></div>
-                <div><label className="text-sm">Used units this month</label><input type="number" placeholder="Enter your used units" className="w-full border rounded px-2 py-1" value={blockRates.usedUnits} onChange={e=>{
+                <div><label className="text-sm">Billing cycle start date <InfoIcon text="The date when your electricity billing cycle begins each month. This helps calculate your current usage within the cycle." /></label><input type="date" className="w-full border rounded px-2 py-1" value={blockRates.startDate} onChange={e=>setBlockRates({...blockRates, startDate:e.target.value})}/></div>
+                <div><label className="text-sm">Used units this month <InfoIcon text="The number of kilowatt-hours (kWh) you've consumed so far in the current billing cycle. This helps determine your fixed charge automatically." /></label><input type="number" placeholder="Enter your used units" className="w-full border rounded px-2 py-1" value={blockRates.usedUnits} onChange={e=>{
                   const used = e.target.value;
                   // derive fixed charge from national tariff table
                   const u = Number(used);
@@ -308,15 +358,15 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
                 <div><label className="text-sm">91–120</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.r91_120} /></div>
                 <div><label className="text-sm">121–180</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.r121_180} /></div>
                 <div><label className="text-sm">180+</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.r180p} /></div>
-                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (auto) Rs</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.fixed} /></div>
+                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (auto) Rs <InfoIcon text="This fixed charge is automatically calculated based on your monthly consumption. It's a standard part of your bill that doesn't change with usage." /></label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={blockRates.fixed} /></div>
                 <div className="sm:col-span-2 text-xs text-slate-500">Current national rates are pre-filled and locked. Enter only your billing start date and units used so far.</div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="text-sm">Off-peak (22:30–05:30) Rs/kWh</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.offpeak} /></div>
-                <div><label className="text-sm">Day (05:30–18:30)</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.day} /></div>
-                <div><label className="text-sm">Peak (18:30–22:30)</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.peak} /></div>
-                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (Rs)</label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.fixed} /></div>
+                <div><label className="text-sm">Off-peak (22:30–05:30) Rs/kWh <InfoIcon text="The lowest electricity rate during night hours when demand is low. Using electricity during these hours can save money." /></label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.offpeak} /></div>
+                <div><label className="text-sm">Day (05:30–18:30) <InfoIcon text="Standard daytime electricity rate. Most household energy is typically consumed during these hours." /></label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.day} /></div>
+                <div><label className="text-sm">Peak (18:30–22:30) <InfoIcon text="The highest electricity rate during evening hours when national electricity demand is highest. Avoid using high-power appliances during this time to save money." /></label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.peak} /></div>
+                <div className="sm:col-span-2"><label className="text-sm">Fixed charge (Rs) <InfoIcon text="A standard monthly charge that applies regardless of your electricity usage." /></label><input disabled type="number" className="w-full border rounded px-2 py-1 bg-slate-50" value={touRates.fixed} /></div>
                 <div className="sm:col-span-2 text-xs text-slate-500">Time-of-use rates are loaded from the current national tariff and cannot be edited.</div>
               </div>
             )}
@@ -339,27 +389,45 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
               {appliances.map((a, i) => (
                 <div key={i} className="grid grid-cols-1 sm:grid-cols-6 gap-2 border rounded p-2">
                   <div className="flex flex-col sm:col-span-2">
-                    <label htmlFor={`name-${i}`} className="text-sm text-slate-600 mb-1">Appliance name</label>
+                    <label htmlFor={`name-${i}`} className="text-sm text-slate-600 mb-1">
+                      Appliance name
+                      <InfoIcon text="Enter a descriptive name for your appliance (e.g., Washing Machine, Refrigerator)." />
+                    </label>
                     <input id={`name-${i}`} className="border rounded px-2 py-1" placeholder="e.g., Washing Machine" value={a.name} onChange={e=>{ const v=[...appliances]; v[i]={...a,name:e.target.value}; setAppliances(v); }} />
                   </div>
                   <div className="flex flex-col">
-                    <label htmlFor={`watts-${i}`} className="text-sm text-slate-600 mb-1">Power (W)</label>
+                    <label htmlFor={`watts-${i}`} className="text-sm text-slate-600 mb-1">
+                      Power (W)
+                      <InfoIcon text="The power consumption of your appliance in watts. Can usually be found on a label on the appliance or in its manual." />
+                    </label>
                     <input id={`watts-${i}`} className="border rounded px-2 py-1" type="number" inputMode="numeric" placeholder="e.g., 500" value={a.watts} onChange={e=>{ const v=[...appliances]; v[i]={...a,watts:e.target.value}; setAppliances(v); }} />
                   </div>
                   <div className="flex flex-col">
-                    <label htmlFor={`minutes-${i}`} className="text-sm text-slate-600 mb-1">Cycle duration (min)</label>
+                    <label htmlFor={`minutes-${i}`} className="text-sm text-slate-600 mb-1">
+                      Cycle duration (min)
+                      <InfoIcon text="How long the appliance typically runs for one complete cycle in minutes. For continuous appliances like refrigerators, estimate daily running time." />
+                    </label>
                     <input id={`minutes-${i}`} className="border rounded px-2 py-1" type="number" inputMode="numeric" placeholder="e.g., 60" value={a.minutes} onChange={e=>{ const v=[...appliances]; v[i]={...a,minutes:e.target.value}; setAppliances(v); }} />
                   </div>
                   <div className="flex flex-col">
-                    <label htmlFor={`earliest-${i}`} className="text-sm text-slate-600 mb-1">Earliest start</label>
+                    <label htmlFor={`earliest-${i}`} className="text-sm text-slate-600 mb-1">
+                      Earliest start
+                      <InfoIcon text="The earliest time of day you would typically start using this appliance. For scheduling and energy optimization." />
+                    </label>
                     <input id={`earliest-${i}`} className="border rounded px-2 py-1" type="time" value={a.earliest} onChange={e=>{ const v=[...appliances]; v[i]={...a,earliest:e.target.value}; setAppliances(v); }} />
                   </div>
                   <div className="flex flex-col">
-                    <label htmlFor={`latest-${i}`} className="text-sm text-slate-600 mb-1">Latest finish</label>
+                    <label htmlFor={`latest-${i}`} className="text-sm text-slate-600 mb-1">
+                      Latest finish
+                      <InfoIcon text="The latest time of day by which this appliance should complete its operation. Important for scheduling to avoid peak rates." />
+                    </label>
                     <input id={`latest-${i}`} className="border rounded px-2 py-1" type="time" value={a.latest} onChange={e=>{ const v=[...appliances]; v[i]={...a,latest:e.target.value}; setAppliances(v); }} />
                   </div>
                   <div className="flex flex-col">
-                    <label htmlFor={`perweek-${i}`} className="text-sm text-slate-600 mb-1">Runs per week</label>
+                    <label htmlFor={`perweek-${i}`} className="text-sm text-slate-600 mb-1">
+                      Runs per week
+                      <InfoIcon text="How many times this appliance is typically used in a week. Used to calculate energy consumption and potential savings." />
+                    </label>
                     <input id={`perweek-${i}`} className="border rounded px-2 py-1" type="number" inputMode="numeric" placeholder="e.g., 3" value={a.perWeek} onChange={e=>{ const v=[...appliances]; v[i]={...a,perWeek:e.target.value}; setAppliances(v); }} />
                   </div>
                   <div className="sm:col-span-6 flex justify-end"><button className="text-rose-600 text-sm" onClick={()=>{ const v=[...appliances]; v.splice(i,1); setAppliances(v); }}>Remove</button></div>
@@ -387,15 +455,27 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
           <div>
             <StepHeader title="CO₂ Model" subtitle="Pick how we estimate emissions so we can schedule at cleaner times" />
             <div className="space-y-2">
-              <label className="flex items-center gap-2"><input type="radio" checked={co2Mode==='default'} onChange={()=>setCo2Mode('default')} /> <span>Use default 0.53 kg/kWh</span></label>
+              <label className="flex items-center gap-2">
+                <input type="radio" checked={co2Mode==='default'} onChange={()=>setCo2Mode('default')} /> 
+                <span>Use default 0.53 kg/kWh</span>
+                <InfoIcon text="This is the standard carbon emission factor for Sri Lanka's electricity grid. It represents how much CO₂ is emitted per kilowatt-hour of electricity used." />
+              </label>
               <div className="text-xs text-slate-600 ml-6">Good starting point. 0.53 kg of CO₂ per kWh is a typical Sri Lanka grid average. Same at all times of day.</div>
 
-              <label className="flex items-center gap-2 mt-2"><input type="radio" checked={co2Mode==='constant'} onChange={()=>setCo2Mode('constant')} /> <span>Use my constant factor</span></label>
+              <label className="flex items-center gap-2 mt-2">
+                <input type="radio" checked={co2Mode==='constant'} onChange={()=>setCo2Mode('constant')} /> 
+                <span>Use my constant factor</span>
+                <InfoIcon text="If you know the specific carbon intensity of your electricity supply, enter it here. This might differ from the national average if you have a special tariff or local generation mix." />
+              </label>
               <div className="text-xs text-slate-600 ml-6">Enter one number in kg/kWh (e.g., 0.50). Lower numbers mean cleaner electricity. Used for all times.</div>
               {co2Mode==='constant' && (
                 <input className="border rounded px-2 py-1" type="number" step="0.01" value={co2Constant} onChange={e=>setCo2Constant(e.target.value)} />
               )}
-              <label className="flex items-center gap-2 mt-2"><input type="radio" checked={co2Mode==='profile'} onChange={()=>setCo2Mode('profile')} /> <span>Upload a 48-slot daily profile</span></label>
+              <label className="flex items-center gap-2 mt-2">
+                <input type="radio" checked={co2Mode==='profile'} onChange={()=>setCo2Mode('profile')} /> 
+                <span>Upload a 48-slot daily profile</span>
+                <InfoIcon text="For advanced users: This allows you to specify how carbon intensity varies throughout the day. Using a detailed profile helps the system schedule energy use during times when electricity is cleaner." />
+              </label>
               <div className="text-xs text-slate-600 ml-6">Paste 48 numbers (kg/kWh) for each half‑hour starting 00:00 → 24:00. The scheduler will prefer hours with lower values.</div>
               {co2Mode==='profile' && (
                 <textarea className="w-full border rounded p-2" rows={4} placeholder="Example: 0.6,0.6,0.58,0.55, … (48 values)" value={co2Profile} onChange={e=>setCo2Profile(e.target.value)} />
@@ -411,11 +491,18 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
         {step === 4 && (
           <div>
             <StepHeader title="Rooftop Solar (optional)" subtitle="Tell us about your solar setup" />
-            <label className="flex items-center gap-2 mb-2"><input type="checkbox" checked={solar.has} onChange={e=>setSolar({...solar, has:e.target.checked})}/> <span>I have rooftop solar</span></label>
+            <label className="flex items-center gap-2 mb-2">
+              <input type="checkbox" checked={solar.has} onChange={e=>setSolar({...solar, has:e.target.checked})}/> 
+              <span>I have rooftop solar</span>
+              <InfoIcon text="Check this if you have solar panels installed on your roof. This will enable options to configure how your solar generation impacts your electricity bill and scheduling." />
+            </label>
             {solar.has && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-sm">Scheme</label>
+                  <label className="text-sm">
+                    Scheme
+                    <InfoIcon text="The billing scheme for your solar setup: Net Metering (credits at retail rate), Net Accounting (credits at export rate), or Net Plus (separate purchase and sale)." />
+                  </label>
                   <select className="w-full border rounded px-2 py-1" value={solar.scheme} onChange={e=>setSolar({...solar, scheme:e.target.value})}>
                     <option value="NET_METERING">Net Metering</option>
                     <option value="NET_ACCOUNTING">Net Accounting</option>
@@ -423,11 +510,17 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm">Export rate (Rs/kWh)</label>
+                  <label className="text-sm">
+                    Export rate (Rs/kWh)
+                    <InfoIcon text="The rate at which your utility pays you for excess electricity you export to the grid, in rupees per kilowatt-hour." />
+                  </label>
                   <input className="w-full border rounded px-2 py-1" type="number" value={solar.exportRate} onChange={e=>setSolar({...solar, exportRate:e.target.value})} />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="text-sm">Daily generation profile (optional, comma/space separated)</label>
+                  <label className="text-sm">
+                    Daily generation profile (optional, comma/space separated)
+                    <InfoIcon text="A 24-hour profile of your typical solar generation. Enter 24 values representing each hour of the day, from midnight to midnight. This helps optimize your consumption against your generation." />
+                  </label>
                   <textarea className="w-full border rounded p-2" rows={3} value={solar.profile} onChange={e=>setSolar({...solar, profile:e.target.value})} />
                 </div>
               </div>
