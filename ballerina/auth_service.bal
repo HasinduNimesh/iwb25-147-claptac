@@ -8,10 +8,6 @@ import ballerina/log;
 const string SECRET_KEY = "lankawattwise-secret-key-2024";
 const int port_auth = 8087;
 
-// In-memory storage for demo
-map<UserWithPassword> userStore = {};
-map<RefreshToken> refreshTokenStore = {};
-
 // Data types
 public type User record {
     string id;
@@ -93,14 +89,14 @@ function createUser(SignupRequest req) returns User|error {
     string userId = uuid:createType1AsString();
     string passwordHash = hashPassword(req.password);
     time:Utc now = time:utcNow();
-    
-    // Check if user already exists
-    foreach UserWithPassword user in userStore {
-        if user.email == req.email {
-            return error("User already exists");
-        }
+
+    UserWithPassword|error? existing = loadUserCredentials(req.email);
+    if existing is UserWithPassword {
+        return error("User already exists");
+    } else if existing is error {
+        return existing;
     }
-    
+
     UserWithPassword newUser = {
         id: userId,
         email: req.email,
@@ -112,9 +108,9 @@ function createUser(SignupRequest req) returns User|error {
         createdAt: now,
         updatedAt: now
     };
-    
-    userStore[userId] = newUser;
-    
+
+    check saveUserCredentials(req.email, newUser);
+
     return {
         id: userId,
         email: req.email,
@@ -128,10 +124,9 @@ function createUser(SignupRequest req) returns User|error {
 }
 
 function getUserByEmail(string email) returns UserWithPassword? {
-    foreach UserWithPassword user in userStore {
-        if user.email == email {
-            return user;
-        }
+    UserWithPassword|error? result = loadUserCredentials(email);
+    if result is UserWithPassword {
+        return result;
     }
     return ();
 }
@@ -140,7 +135,7 @@ function storeRefreshToken(string userId, string token) returns error? {
     string tokenId = uuid:createType1AsString();
     string tokenHash = crypto:hashSha256(token.toBytes()).toBase64();
     time:Utc expiresAt = time:utcAddSeconds(time:utcNow(), 7 * 24 * 3600); // 7 days
-    
+
     RefreshToken refreshToken = {
         id: tokenId,
         userId: userId,
@@ -149,8 +144,8 @@ function storeRefreshToken(string userId, string token) returns error? {
         revoked: false,
         createdAt: time:utcNow()
     };
-    
-    refreshTokenStore[tokenId] = refreshToken;
+
+    check storeRefreshTokenRecord(refreshToken);
 }
 
 // HTTP endpoints

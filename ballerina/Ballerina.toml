@@ -10,3 +10,14 @@ keywords = ["energy", "ontology", "sri-lanka", "ballerina"]
 
 [build-options]
 observabilityIncluded = true
+
+# MySQL JDBC driver configuration for ballerinax/mysql runtime
+[platform.java17]
+graalvmCompatible = false
+
+[[platform.java17.dependency]]
+# MySQL Connector/J (mysql-connector-j) coordinates and local path
+path = "libs/mysql-connector-j-8.0.33.jar"
+groupId = "com.mysql"
+artifactId = "mysql-connector-j"
+version = "8.0.33"

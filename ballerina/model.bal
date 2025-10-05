@@ -36,6 +36,12 @@ public type Recommendation record {
 
 public type Recommendations Recommendation[];
 
+public type RecommendationVariants record {
+    Recommendations cheapest;
+    Recommendations greenest;
+    Recommendations balanced;
+};
+
 public type Savings record { decimal todayLKR; decimal monthLKR; };
 
 public type Explanation record { string ruleId; string detail; };

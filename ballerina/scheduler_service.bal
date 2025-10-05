@@ -55,6 +55,9 @@ public type OptimizeRequest record {
 
 public type OptimizeResult record {
     Recommendations plan;
+    Recommendations cheapest;
+    Recommendations greenest;
+    Recommendations balanced;
 };
 
 configurable int port_scheduler = 8092;
@@ -75,13 +78,15 @@ service /scheduler on new http:Listener(port_scheduler) {
             Recommendations recs = [];
             var conv = value:fromJsonWithType(j, Recommendations);
             if conv is Recommendations { recs = conv; }
-            return { plan: recs };
+            return { plan: recs, balanced: recs, cheapest: recs, greenest: recs };
         }
 
     // Build band map (use user's plan if available, else default)
     TOUPlan tou = getTOU(plan);
 
-        Recommendations out = [];
+        Recommendations cheapestPlan = [];
+        Recommendations greenestPlan = [];
+        Recommendations balancedPlan = [];
         foreach var t in tasks {
             Device? dev = (); foreach var d in devices { if d.id == t.applianceId { dev = d; break; } }
             if dev is () { continue; }
@@ -114,22 +119,48 @@ service /scheduler on new http:Listener(port_scheduler) {
                 if sc < bestScore { bestScore = sc; balanced = c; }
             }
 
-            // For UI plan, choose balanced
-            Recommendation r = {
-                id: "rec-" + t.id + "-" + balanced.band,
+            Recommendation cheapestRec = {
+                id: "rec-" + t.id + "-cheapest",
+                taskId: t.id,
+                applianceId: t.applianceId,
+                suggestedStart: cheapest.beginTime,
+                durationMinutes: t.durationMin,
+                reasons: [cheapest.why],
+                justifications: ["TOU", "CHEAPEST"],
+                estSavingLKR: 0.0,
+                costRs: cheapest.cost,
+                co2Kg: cheapest.co2
+            };
+            Recommendation greenestRec = {
+                id: "rec-" + t.id + "-greenest",
+                taskId: t.id,
+                applianceId: t.applianceId,
+                suggestedStart: greenest.beginTime,
+                durationMinutes: t.durationMin,
+                reasons: [greenest.why],
+                justifications: ["TOU", "GREENEST"],
+                estSavingLKR: 0.0,
+                costRs: greenest.cost,
+                co2Kg: greenest.co2
+            };
+            Recommendation balancedRec = {
+                id: "rec-" + t.id + "-balanced",
                 taskId: t.id,
                 applianceId: t.applianceId,
                 suggestedStart: balanced.beginTime,
                 durationMinutes: t.durationMin,
                 reasons: [balanced.why],
-                justifications: ["TOU"],
+                justifications: ["TOU", "BALANCED"],
                 estSavingLKR: 0.0,
                 costRs: balanced.cost,
                 co2Kg: balanced.co2
             };
-            out.push(r);
+
+            cheapestPlan.push(cheapestRec);
+            greenestPlan.push(greenestRec);
+            balancedPlan.push(balancedRec);
         }
 
-        return { plan: out };
+        return { plan: balancedPlan, balanced: balancedPlan, cheapest: cheapestPlan, greenest: greenestPlan };
     }
 }

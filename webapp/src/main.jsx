@@ -1,12 +1,3 @@
-import React from 'react'
-import { createRoot } from 'react-dom/client'
-import LankaWatteWiseApp from './ui.jsx'
-import { AuthProvider } from './AuthContext.jsx'
-
-createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <AuthProvider>
-  <LankaWatteWiseApp />
-    </AuthProvider>
-  </React.StrictMode>
-)
+// This placeholder is kept to avoid import resolution issues during the JSX→TSX migration.
+// The real entry point now lives at src/main.tsx.
+export {};

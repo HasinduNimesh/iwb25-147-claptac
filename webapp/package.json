@@ -1,12 +1,13 @@
 {
-  "name": "LankaWatteWise-webapp",
+  "name": "lankawattwise-webapp",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview --host --port 9081"
+    "preview": "vite preview --host --port 9081",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "framer-motion": "^11.2.10",
@@ -16,7 +17,10 @@
     "recharts": "^2.12.7"
   },
   "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.2",
     "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.4",
     "vite": "^7.1.3"
   }
 }

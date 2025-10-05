@@ -19,3 +19,10 @@ advice_baseUrl = "http://localhost:8083"
 tariff_baseUrl = "http://localhost:8081"
 ontology_baseUrl = "http://localhost:8082"
 # (empty) — services use defaults; keep file for future overrides
+
+dbHost = "localhost"
+dbPort = 3306
+dbName = "lankawattwise"
+dbUser = "lww_user"
+dbPassword = "lww_pass"
+dbPoolMaxOpen = 8

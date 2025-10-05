@@ -117,5 +117,23 @@ public function getPlan(string userId) returns TariffPlan? { return _plans[userI
 public function setDevices(string userId, Device[] d) { _devices[userId] = d; }
 public function getDevices(string userId) returns Device[] { return _devices[userId] ?: []; }
 
-public function setCO2Model(string userId, CO2Model m) { _co2Model[userId] = m; }
-public function getCO2Model(string userId) returns CO2Model { return _co2Model[userId] ?: { modelType: "CONSTANT", value: 0.73 }; }
+public function setCO2Model(string userId, CO2Model m) {
+    _co2Model[userId] = m;
+    error? res = saveCO2Model(userId, m);
+    if res is error {
+        io:println("Error saving CO2 model: ", res.message());
+    }
+}
+
+public function getCO2Model(string userId) returns CO2Model {
+    CO2Model? cached = _co2Model[userId];
+    if cached is CO2Model {
+        return cached;
+    }
+    CO2Model|error? stored = loadCO2Model(userId);
+    if stored is CO2Model {
+        _co2Model[userId] = stored;
+        return stored;
+    }
+    return { modelType: "CONSTANT", value: 0.73 };
+}
