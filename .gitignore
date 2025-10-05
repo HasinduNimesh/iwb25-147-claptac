@@ -103,3 +103,6 @@ logs/
 **/Config.*.local.toml
 **/*.override.toml
 /ballerina/target
+
+#vs code
+.vscode/
