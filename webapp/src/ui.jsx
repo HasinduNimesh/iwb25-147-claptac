@@ -396,7 +396,11 @@ function DashboardApp({ user, onLogout }) {
   }, [userId]);
 
   // Persist a shiftable toggle by updating config overrides (noiseCurfew = !flexible)
+  let _toggleInFlight = false;
+  let _toggleQueued = null;
   async function persistApplianceFlexible(id, flexible) {
+    if (_toggleInFlight) { _toggleQueued = { id, flexible }; return; }
+    _toggleInFlight = true;
     try {
       // Optimistic UI update
       setAppliances((arr) => arr.map((a) => (a.id === id ? { ...a, flexible } : a)));
@@ -429,9 +433,18 @@ function DashboardApp({ user, onLogout }) {
       }).catch(() => null);
       const ok = !!(res && res.ok);
       if (!ok) throw new Error('Save failed');
+      // Re-sync from server to avoid any local drift or stale fields
+      await reloadUserConfig();
     } catch (_) {
       // Revert optimistic change on failure
       setAppliances((arr) => arr.map((a) => (a.id === id ? { ...a, flexible: !flexible } : a)));
+    } finally {
+      _toggleInFlight = false;
+      if (_toggleQueued) {
+        const nextReq = _toggleQueued; _toggleQueued = null;
+        // Fire and forget the last queued state
+        persistApplianceFlexible(nextReq.id, nextReq.flexible);
+      }
     }
   }
 
