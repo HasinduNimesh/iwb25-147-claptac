@@ -1,4 +1,3 @@
-############################################
 # Global / OS noise
 ############################################
 *.log
@@ -34,11 +33,11 @@ webapp/.env.*
 ############################################
 # Ballerina / Build artifacts
 ############################################
-ballerina/target/
+/ballerina/target/
 **/target/
 **/.ballerina/
 # Auto-generated dependency graph (let build regenerate)
-ballerina/Dependencies.toml
+/ballerina/Dependencies.toml
 
 ############################################
 # Java / JVM outputs
@@ -49,7 +48,7 @@ ballerina/Dependencies.toml
 ############################################
 # Node / Frontend build + caches
 ############################################
-webapp/node_modules/
+/webapp/node_modules/
 webapp/dist/
 webapp/.vite/
 webapp/.parcel-cache/
@@ -102,4 +101,15 @@ logs/
 **/Config.local.toml
 **/Config.*.local.toml
 **/*.override.toml
-/ballerina/target
+# (removed duplicate /ballerina/target here)
+#vs code
+.vscode/
+
+############################################
+# Clarification:
+# If these still appear in git status they were already tracked.
+# Run:
+#   git rm --cached ballerina/Dependencies.toml
+#   git rm -r --cached ballerina/target
+#   git rm -r --cached webapp/node_modules
+############################################
