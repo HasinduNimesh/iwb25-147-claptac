@@ -83,6 +83,8 @@ function initDatabase() returns error? {
             earliest VARCHAR(8),
             latest VARCHAR(8),
             repeats_per_week INT,
+            shiftable BOOLEAN DEFAULT TRUE,
+            days_of_week JSON,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY unique_user_task (user_id, task_id),
             INDEX idx_task_user (user_id)
@@ -123,7 +125,37 @@ function initDatabase() returns error? {
         _ = check dbClient->execute(stmt);
     }
 
+    // Defensive migrations for older databases (MySQL versions without IF NOT EXISTS)
+    // Add 'shiftable' column if missing
+    boolean hasShiftable = check columnExists("tasks", "shiftable");
+    if !hasShiftable {
+        _ = check dbClient->execute(`ALTER TABLE tasks ADD COLUMN shiftable BOOLEAN DEFAULT TRUE`);
+    }
+    // Add 'days_of_week' column if missing
+    boolean hasDays = check columnExists("tasks", "days_of_week");
+    if !hasDays {
+        _ = check dbClient->execute(`ALTER TABLE tasks ADD COLUMN days_of_week JSON`);
+    }
+
     return ();
+}
+
+function columnExists(string tableName, string columnName) returns boolean|error {
+    stream<record {| int? cnt; |}, sql:Error?> rs =
+        dbClient->query(`
+            SELECT COUNT(*) AS cnt
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = ${dbName}
+              AND TABLE_NAME = ${tableName}
+              AND COLUMN_NAME = ${columnName}
+        `);
+    var row = rs.next();
+    check rs.close();
+    if row is record {| record {| int? cnt; |} value; |} {
+        int c = row.value.cnt ?: 0;
+        return c > 0;
+    }
+    return false;
 }
 
 // region: generic helpers --------------------------------------------------
@@ -311,9 +343,15 @@ public function loadAppliancesConfig(string userId) returns ApplianceCfg[]|error
 public function saveTasks(string userId, Task[] tasks) returns error? {
     _ = check dbClient->execute(`DELETE FROM tasks WHERE user_id = ${userId}`);
     foreach var task in tasks {
+        boolean shift;
+        var sh = task?.shiftable;
+        if sh is boolean { shift = sh; } else { shift = true; }
+        json? daysJ = ();
+        var d = task?.daysOfWeek;
+        if d is int[] { daysJ = <json>d; }
         _ = check dbClient->execute(`
-            INSERT INTO tasks (user_id, task_id, appliance_id, duration_min, earliest, latest, repeats_per_week)
-            VALUES (${userId}, ${task.id}, ${task.applianceId}, ${task.durationMin}, ${task.earliest}, ${task.latest}, ${task.repeatsPerWeek})
+            INSERT INTO tasks (user_id, task_id, appliance_id, duration_min, earliest, latest, repeats_per_week, shiftable, days_of_week)
+            VALUES (${userId}, ${task.id}, ${task.applianceId}, ${task.durationMin}, ${task.earliest}, ${task.latest}, ${task.repeatsPerWeek}, ${shift}, CAST(${optionalJsonToString(daysJ)} AS JSON))
         `);
     }
 }
@@ -326,21 +364,51 @@ public function loadTasks(string userId) returns Task[]|error {
         string? earliest;
         string? latest;
         int? repeats_per_week;
+        boolean? shiftable;
+        string? days_of_week;
     |}, sql:Error?> rs = dbClient->query(`
-        SELECT task_id, appliance_id, duration_min, earliest, latest, repeats_per_week
+        SELECT task_id, appliance_id, duration_min, earliest, latest, repeats_per_week, shiftable, CAST(days_of_week AS CHAR) AS days_of_week
         FROM tasks WHERE user_id = ${userId} ORDER BY id ASC
     `);
 
     Task[] out = [];
     check from var rec in rs
         do {
+            int[]? dows = ();
+            string? jd = rec.days_of_week;
+            if jd is string {
+                json parsed = check parseJsonString(jd);
+                json arr = parsed;
+                // Legacy fix: handle JSON stored as a string inside JSON
+                if parsed is string {
+                    json parsed2 = check parseJsonString(parsed);
+                    arr = parsed2;
+                }
+                if arr is json[] {
+                    int[] tmp = [];
+                    foreach json v in arr {
+                        if v is int {
+                            int d = v;
+                            if d < 0 { d = 0; } else if d > 6 { d = 6; }
+                            tmp.push(d);
+                        } else if v is decimal {
+                            int d = <int>v;
+                            if d < 0 { d = 0; } else if d > 6 { d = 6; }
+                            tmp.push(d);
+                        }
+                    }
+                    dows = tmp;
+                }
+            }
             out.push({
                 id: rec.task_id,
                 applianceId: rec.appliance_id,
                 durationMin: rec.duration_min ?: 0,
                 earliest: rec.earliest ?: "06:00",
                 latest: rec.latest ?: "22:00",
-                repeatsPerWeek: rec.repeats_per_week ?: 0
+                repeatsPerWeek: rec.repeats_per_week ?: 0,
+                shiftable: rec.shiftable ?: true,
+                daysOfWeek: dows
             });
         };
     return out;

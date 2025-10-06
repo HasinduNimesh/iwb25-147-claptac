@@ -252,7 +252,7 @@ function DashboardApp({ user, onLogout }) {
       const cfgJson = cfgRes && cfgRes.ok ? await cfgRes.json().catch(() => []) : [];
       const tasksJson = tasksRes && tasksRes.ok ? await tasksRes.json().catch(() => []) : [];
       const list = Array.isArray(cfgJson)
-        ? cfgJson.map((x) => ({ id: x.id || x.name, label: x.name || x.id, flexible: !(x.noiseCurfew === true) }))
+        ? cfgJson.map((x) => ({ id: x.id || x.name, label: x.name || x.id, flexible: !(x.noiseCurfew === true), watts: Number(x.ratedPowerW ?? 0) }))
         : [];
       setAppliances(list);
       const byId = new Map((cfgJson || []).map((a) => [a.id || a.name, a]));
@@ -265,14 +265,19 @@ function DashboardApp({ user, onLogout }) {
             earliest: t.earliest || '06:00',
             latest: t.latest || t.latestFinish || '22:00',
             repeatsPerWeek: Number(t.repeatsPerWeek || t.runsPerWeek || 1),
+            shiftable: (t.shiftable === undefined || t.shiftable === null) ? true : !!t.shiftable,
+            daysOfWeek: Array.isArray(t.daysOfWeek) ? t.daysOfWeek.map(Number).filter(Number.isFinite) : undefined,
           }))
         : [];
       setTasksLocal(mapped);
+      // Also refresh projection after config changes
+      try { await recalcProjection(); } catch {}
+      return mapped.length;
     } catch (_) {
       // ignore transient reload errors
+      return 0;
     }
   }, [userId]);
-
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -280,11 +285,10 @@ function DashboardApp({ user, onLogout }) {
       try {
         // Live API calls through UI gateway; prefer user config
         const data = await gql(`query Q($userId:String!, $date:String!) { health currentPlan(userId:$userId, date:$date){ id applianceId suggestedStart durationMinutes reasons estSavingLKR } }`, { userId, date }).catch(() => null);
-        const [tRes, aRes, bRes, pRes, tasksRes, cfgRes, co2Res] = await Promise.all([
+        const [tRes, aRes, bRes, tasksRes, cfgRes, co2Res] = await Promise.all([
           fetch(`/config/tariff?userId=${encodeURIComponent(userId)}`).catch(() => null),
           fetch(`/ontology/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null),
           fetch(`/billing/preview?userId=${encodeURIComponent(userId)}&monthlyKWh=150`).catch(() => null),
-          fetch(`/billing/projection?userId=${encodeURIComponent(userId)}&eomKWh=150`).catch(() => null),
           fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`).catch(() => null),
           fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null),
           fetch(`/config/co2?userId=${encodeURIComponent(userId)}`).catch(() => null)
@@ -300,11 +304,12 @@ function DashboardApp({ user, onLogout }) {
 
         setTariff(tariffJson || null);
 
-        const applJson = aRes && aRes.ok ? await aRes.json().catch(() => null) : null;
-        const cfgJson = cfgRes && cfgRes.ok ? await cfgRes.json().catch(() => null) : null;
+  const applJson = aRes && aRes.ok ? await aRes.json().catch(() => null) : null;
+  const cfgJson = cfgRes && cfgRes.ok ? await cfgRes.json().catch(() => null) : null;
+  const tasksJson = tasksRes && tasksRes.ok ? await tasksRes.json().catch(() => null) : null;
         const haveCfg = Array.isArray(cfgJson) && cfgJson.length > 0;
         if (haveCfg) {
-          const list = cfgJson.map(x => ({ id: x.id || x.name, label: x.name || x.id, flexible: !(x.noiseCurfew === true) }));
+          const list = cfgJson.map(x => ({ id: x.id || x.name, label: x.name || x.id, flexible: !(x.noiseCurfew === true), watts: Number(x.ratedPowerW ?? 0) }));
           setAppliances(list);
         } else {
           // When no user-configured appliances, do not show ontology defaults
@@ -319,17 +324,40 @@ function DashboardApp({ user, onLogout }) {
     if (localBill) setBill(localBill);
   }
 
-  const projJson = pRes && pRes.ok ? await pRes.json().catch(() => null) : null;
-  if (projJson) {
-    setProjection(projJson);
-  } else {
-    const co2Json = co2Res && co2Res.ok ? await co2Res.json().catch(() => null) : null;
-    const localProj = computeProjectionFromConfig(co2Json, tariffJson, 150);
+  // Estimate end-of-month kWh from user devices and tasks so Carbon Offset responds to configuration
+  const co2Json = co2Res && co2Res.ok ? await co2Res.json().catch(() => null) : null;
+  const cfgArr = Array.isArray(cfgJson) ? cfgJson : [];
+  const tasksArr = Array.isArray(tasksJson) ? tasksJson : [];
+  const byIdForWatts = new Map((Array.isArray(cfgArr)?cfgArr:[]).map(a=>[a.id||a.name, a]));
+  // Daily appliance baseline (if cycleMinutes provided)
+  const dailyFromAppliances = (Array.isArray(cfgArr)?cfgArr:[]).reduce((s,a)=>{
+    const w = Number(a.ratedPowerW||0); const m = Number(a.cycleMinutes||0);
+    if (!w || !m) return s; return s + (w/1000)*(m/60);
+  }, 0);
+  // Weekly tasks energy
+  const weeklyFromTasks = (Array.isArray(tasksArr)?tasksArr:[]).reduce((s,t)=>{
+    const w = Number(byIdForWatts.get(t.applianceId||'')?.ratedPowerW || 0);
+    const m = Number(t.durationMin||t.cycleMinutes||0);
+    const r = Number(t.repeatsPerWeek||t.runsPerWeek||0) || 0;
+    if (!w || !m || !r) return s; return s + (w/1000)*(m/60)*r;
+  }, 0);
+  const monthlyFromAppliances = dailyFromAppliances * 30; // simple month estimate
+  const monthlyFromTasks = weeklyFromTasks * 4.33;
+  let eomKWhEst = 0;
+  if (monthlyFromAppliances > 0 && monthlyFromTasks > 0) eomKWhEst = Math.max(monthlyFromAppliances, monthlyFromTasks);
+  else if (monthlyFromAppliances > 0) eomKWhEst = monthlyFromAppliances;
+  else if (monthlyFromTasks > 0) eomKWhEst = monthlyFromTasks;
+  else eomKWhEst = 150; // fallback
+  // Fetch projection using the device-based estimate; fall back to local calc on failure
+  const pRes2 = await fetch(`/billing/projection?userId=${encodeURIComponent(userId)}&eomKWh=${Math.max(1, Math.round(eomKWhEst))}`).catch(() => null);
+  const projJson = pRes2 && pRes2.ok ? await pRes2.json().catch(() => null) : null;
+  if (projJson) setProjection(projJson);
+  else {
+    const localProj = computeProjectionFromConfig(co2Json, tariffJson, eomKWhEst);
     if (localProj) setProjection(localProj);
   }
 
         // Load tasks if available and map to local shape
-        const tasksJson = tasksRes && tasksRes.ok ? await tasksRes.json().catch(() => null) : null;
         if (Array.isArray(tasksJson)) {
           const byId = new Map(((cfgJson||[]) || []).map(a=>[a.id||a.name, a]));
           const mapped = tasksJson.map(t=>({
@@ -340,6 +368,8 @@ function DashboardApp({ user, onLogout }) {
             earliest: t.earliest || '06:00',
             latest: t.latest || t.latestFinish || '22:00',
             repeatsPerWeek: Number(t.repeatsPerWeek||t.runsPerWeek||1),
+            shiftable: (t.shiftable === undefined || t.shiftable === null) ? true : !!t.shiftable,
+            daysOfWeek: Array.isArray(t.daysOfWeek) ? t.daysOfWeek.map(Number).filter(n=>Number.isFinite(n)) : undefined,
           }));
           setTasksLocal(mapped);
         } else {
@@ -375,7 +405,7 @@ function DashboardApp({ user, onLogout }) {
   const [lastUpdated, setLastUpdated] = React.useState({ usageAt: null, billAt: null, projAt: null, planAt: null });
   const [bw, setBw] = React.useState(null);
   const [showAddAppl, setShowAddAppl] = useState(false);
-  const [addAppl, setAddAppl] = useState({ name: '', ratedPowerW: 600, cycleMinutes: 60, latestFinish: '22:00', flexible: true });
+  const [addAppl, setAddAppl] = useState({ name: '', ratedPowerW: 600 });
   const [savingAdd, setSavingAdd] = useState(false);
   const [savingRemove, setSavingRemove] = useState({});
 
@@ -387,12 +417,17 @@ function DashboardApp({ user, onLogout }) {
 
   async function saveTasks() {
     try {
-      const body = tasksLocal.map((t, i)=>({ id: t.id || `t${i+1}`, applianceId: t.applianceId || (safeAppliances[0]?.id||'unknown'), durationMin: Number(t.durationMin||0), earliest: t.earliest||'06:00', latest: t.latest||'22:00', repeatsPerWeek: Number(t.repeatsPerWeek||1) }));
+  const body = tasksLocal.map((t, i)=>({ id: t.id || `t${i+1}`, applianceId: t.applianceId || (safeAppliances[0]?.id||'unknown'), durationMin: Number(t.durationMin||0), earliest: t.earliest||'06:00', latest: t.latest||'22:00', repeatsPerWeek: Number(t.repeatsPerWeek||1), shiftable: (t.shiftable===undefined||t.shiftable===null)?true:!!t.shiftable, daysOfWeek: Array.isArray(t.daysOfWeek)?t.daysOfWeek:undefined }));
       await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
       // Re-optimize after saving
       const res = await fetch('/scheduler/optimize', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId, date, alpha }) }).catch(()=>null);
       const j = res && res.ok ? await res.json().catch(()=>null) : null;
       if (j?.plan) setPlan(j.plan);
+      // Recalculate carbon projection based on updated tasks
+      await recalcProjection();
+      // Resync tasks/appliances from server to reflect persisted daysOfWeek
+      const count = await reloadUserConfig();
+      showToast(count > 0 ? 'Tasks saved' : 'No tasks found after save', count > 0 ? 'success' : 'error');
     } catch {}
   }
 
@@ -403,7 +438,7 @@ function DashboardApp({ user, onLogout }) {
       setDeletingTask(index);
       const next = tasksLocal.filter((_, i) => i !== index);
       setTasksLocal(next); // optimistic
-      const body = next.map((t, i)=>({ id: t.id || `t${i+1}`, applianceId: t.applianceId || (safeAppliances[0]?.id||'unknown'), durationMin: Number(t.durationMin||0), earliest: t.earliest||'06:00', latest: t.latest||'22:00', repeatsPerWeek: Number(t.repeatsPerWeek||1) }));
+  const body = next.map((t, i)=>({ id: t.id || `t${i+1}`, applianceId: t.applianceId || (safeAppliances[0]?.id||'unknown'), durationMin: Number(t.durationMin||0), earliest: t.earliest||'06:00', latest: t.latest||'22:00', repeatsPerWeek: Number(t.repeatsPerWeek||1), shiftable: (t.shiftable===undefined||t.shiftable===null)?true:!!t.shiftable, daysOfWeek: Array.isArray(t.daysOfWeek)?t.daysOfWeek:undefined }));
       const res = await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).catch(()=>null);
       if (!(res && res.ok)) throw new Error('Delete failed');
       showToast('Task deleted');
@@ -435,16 +470,13 @@ function DashboardApp({ user, onLogout }) {
         id,
         name: addAppl.name.trim(),
         ratedPowerW: Number(addAppl.ratedPowerW||0),
-        cycleMinutes: Number(addAppl.cycleMinutes||0),
-        latestFinish: addAppl.latestFinish || '22:00',
-        noiseCurfew: !addAppl.flexible,
       };
       const next = [...filtered, nextItem];
       const res = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(next) }).catch(()=>null);
       if (!(res && res.ok)) throw new Error('Save failed');
       await reloadUserConfig();
       setShowAddAppl(false);
-      setAddAppl({ name: '', ratedPowerW: 600, cycleMinutes: 60, latestFinish: '22:00', flexible: true });
+      setAddAppl({ name: '', ratedPowerW: 600 });
       showToast('Appliance added');
     } catch (_) {
       showToast('Add failed','error');
@@ -469,18 +501,47 @@ function DashboardApp({ user, onLogout }) {
       const remainingTasks = (Array.isArray(tasksJson)?tasksJson:[]).filter(t => t.applianceId !== id);
       const removedCount = (Array.isArray(tasksJson)?tasksJson:[]).length - remainingTasks.length;
       // Persist filtered tasks using the expected shape
-      const toPost = remainingTasks.map(t => ({ id: t.id, applianceId: t.applianceId, durationMin: Number(t.durationMin||t.cycleMinutes||0), earliest: t.earliest || '06:00', latest: t.latest || t.latestFinish || '22:00', repeatsPerWeek: Number(t.repeatsPerWeek||t.runsPerWeek||1) }));
+  const toPost = remainingTasks.map(t => ({ id: t.id, applianceId: t.applianceId, durationMin: Number(t.durationMin||t.cycleMinutes||0), earliest: t.earliest || '06:00', latest: t.latest || t.latestFinish || '22:00', repeatsPerWeek: Number(t.repeatsPerWeek||t.runsPerWeek||1), shiftable: (t.shiftable===undefined||t.shiftable===null)?true:!!t.shiftable, daysOfWeek: Array.isArray(t.daysOfWeek)?t.daysOfWeek:undefined }));
       const resTasks = await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(toPost) }).catch(()=>null);
       if (!(resTasks && resTasks.ok)) throw new Error('Task cleanup failed');
       // Update local UI state
       setTasksLocal(prev => prev.filter(t => t.applianceId !== id));
       await reloadUserConfig();
+  await recalcProjection();
       showToast(removedCount > 0 ? `Removed (and ${removedCount} task${removedCount>1?'s':''})` : 'Removed');
     } catch (_) {
       showToast('Remove failed','error');
     } finally {
       setSavingRemove(m=>{ const n={...m}; delete n[id]; return n; });
     }
+  }
+
+  // Recalculate Carbon Offset based on current config
+  async function recalcProjection() {
+    try {
+      const [cfgRes, tasksRes, co2Res] = await Promise.all([
+        fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(()=>null),
+        fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`).catch(()=>null),
+        fetch(`/config/co2?userId=${encodeURIComponent(userId)}`).catch(()=>null),
+      ]);
+      const cfgArr = cfgRes && cfgRes.ok ? await cfgRes.json().catch(()=>[]) : [];
+      const tasksArr = tasksRes && tasksRes.ok ? await tasksRes.json().catch(()=>[]) : [];
+      const co2Json = co2Res && co2Res.ok ? await co2Res.json().catch(()=>null) : null;
+      const byIdForWatts = new Map((Array.isArray(cfgArr)?cfgArr:[]).map(a=>[a.id||a.name, a]));
+      const dailyFromAppliances = (Array.isArray(cfgArr)?cfgArr:[]).reduce((s,a)=>{ const w=Number(a.ratedPowerW||0), m=Number(a.cycleMinutes||0); return (!w||!m)?s:s+(w/1000)*(m/60); },0);
+      const weeklyFromTasks = (Array.isArray(tasksArr)?tasksArr:[]).reduce((s,t)=>{ const w=Number(byIdForWatts.get(t.applianceId||'')?.ratedPowerW||0), m=Number(t.durationMin||t.cycleMinutes||0), r=Number(t.repeatsPerWeek||t.runsPerWeek||0)||0; return (!w||!m||!r)?s:s+(w/1000)*(m/60)*r; },0);
+      const monthlyFromAppliances = dailyFromAppliances*30;
+      const monthlyFromTasks = weeklyFromTasks*4.33;
+      let eomKWhEst = 0;
+      if (monthlyFromAppliances>0 && monthlyFromTasks>0) eomKWhEst = Math.max(monthlyFromAppliances, monthlyFromTasks); else if (monthlyFromAppliances>0) eomKWhEst = monthlyFromAppliances; else if (monthlyFromTasks>0) eomKWhEst = monthlyFromTasks; else eomKWhEst = 150;
+      const pRes = await fetch(`/billing/projection?userId=${encodeURIComponent(userId)}&eomKWh=${Math.max(1,Math.round(eomKWhEst))}`).catch(()=>null);
+      const projJson = pRes && pRes.ok ? await pRes.json().catch(()=>null) : null;
+      if (projJson) setProjection(projJson); else {
+        const localProj = computeProjectionFromConfig(co2Json, tariff, eomKWhEst);
+        if (localProj) setProjection(localProj);
+      }
+      setLastUpdated(lu=>({ ...lu, projAt: new Date() }));
+    } catch {}
   }
 
   // Load recent usage for charts and MTD
@@ -600,19 +661,27 @@ function DashboardApp({ user, onLogout }) {
 
   <main className="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="col-span-1 lg:col-span-1 space-y-4">
+          <Section title="Tariff Overview" icon={Info}>
+            {tariff ? (
+              <div className="text-sm">
+                {tariffTypeOf(tariff) && (
+                  <Pill className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                    {tariffTypeOf(tariff) === 'TOU' ? 'Time of Use' : 'Block'} tariff
+                  </Pill>
+                )}
+              </div>
+            ) : (
+              <div className="text-slate-500 text-sm">No tariff configured. Open Coach to set up your tariff.</div>
+            )}
+          </Section>
           <Section title="HomeEnergy Coach" icon={Settings} right={null}>
             <div className="text-sm text-slate-600">Answer a few questions to tailor tariffs, tasks, CO₂, and solar settings.</div>
             <div className="mt-2"><button className="px-3 py-1.5 rounded bg-emerald-600 text-white" onClick={()=>setShowCoach(true)}>Open Coach</button></div>
           </Section>
-          <Section title="Today's Savings" icon={TrendingUp} right={<div className="flex items-center gap-2 text-sm text-slate-500">
-            {tariffTypeOf(tariff) && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-slate-50 text-slate-700">
-                {tariffTypeOf(tariff)} tariff
-              </span>
-            )}
+          <Section title="Predicted Savings" icon={TrendingUp} right={<div className="flex items-center gap-2 text-sm text-slate-500">
             <Wifi className={`w-4 h-4 ${health ? "text-emerald-500" : "text-slate-400"}`} /><span>{health ? "Connected" : "Offline"}</span>
           </div>}>
-            <div className="flex items-end gap-4"><div><div className="text-3xl font-extrabold">{fmtMoneyLKR(totalSaving)}</div><div className="text-sm text-slate-500">Estimated saving for {date} from your plan</div></div></div>
+            <div className="flex items-end gap-4"><div><div className="text-3xl font-extrabold">{fmtMoneyLKR(totalSaving)}</div><div className="text-sm text-slate-500">Predicted savings for {date} from your plan</div></div></div>
             <div className="mt-3 flex items-start justify-between gap-2">
               <div className="flex-1"><SavingsChart data={buildSavingsSeries(usage, plan)} /></div>
               <Info className="w-4 h-4 text-slate-400 mt-1" title="Savings uses today's recommended plan and your recent usage from Reports service." />
@@ -658,7 +727,7 @@ function DashboardApp({ user, onLogout }) {
             )}
           </Section>
 
-          <Section title="Carbon Offset" icon={Leaf}>
+          <Section title="Carbon Offset" icon={Leaf} right={<button className="px-2 py-1 text-xs rounded border" onClick={recalcProjection}>Recalculate</button>}>
             {projection ? (()=>{
               const monthly = Number(projection.totalCO2Kg ?? 0);
               const annual = monthly * 12;
@@ -742,11 +811,14 @@ function DashboardApp({ user, onLogout }) {
               </div>
             )}
             <div className="grid gap-2">
+              {tasksLocal.length === 0 && (
+                <div className="text-sm text-slate-500">No tasks yet. Click “+ Add task” to create one.</div>
+              )}
               {tasksLocal.map((t,i)=> (
                 <div key={i} className="flex flex-wrap items-end gap-2 p-3 rounded border">
                   <div className="flex flex-col">
                     <label className="text-xs">Appliance</label>
-                    <select className="border rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={t.applianceId||''} onChange={e=>{ const v=[...tasksLocal]; v[i]={...t, applianceId:e.target.value}; setTasksLocal(v); }}>
+                    <select className="border rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={t.applianceId||''} onChange={e=>{ const selId=e.target.value; const dev=safeAppliances.find(a=>a.id===selId); const newWatts=Number(dev?.watts ?? t.watts ?? 0); const v=[...tasksLocal]; v[i]={...t, applianceId:selId, watts:newWatts}; setTasksLocal(v); checkBlockWarning({ ...t, applianceId: selId, watts: newWatts }); }}>
                       {safeAppliances.map(a=> (<option key={a.id} value={a.id}>{a.label}</option>))}
                     </select>
                   </div>
@@ -766,6 +838,28 @@ function DashboardApp({ user, onLogout }) {
                     <label className="text-xs">Latest</label>
                     <input className="border rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" type="time" value={t.latest||'22:00'} onChange={e=>{ const v=[...tasksLocal]; v[i]={...t, latest:e.target.value}; setTasksLocal(v); }} />
                   </div>
+                  <div className="flex flex-col">
+                    <label className="text-xs">Days</label>
+                    <div className="flex flex-wrap gap-1">
+                      {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((label,idx)=>{
+                        const selected = Array.isArray(t.daysOfWeek) ? t.daysOfWeek.includes(idx) : false;
+                        return (
+                          <button type="button" key={idx} className={`px-2 py-1 text-xs rounded border ${selected?'bg-emerald-600 text-white border-emerald-600':'bg-white dark:bg-slate-900'}`} onClick={()=>{
+                            const v=[...tasksLocal];
+                            const cur = Array.isArray(t.daysOfWeek)?[...t.daysOfWeek]:[];
+                            const has = cur.includes(idx);
+                            const nextDays = has ? cur.filter(d=>d!==idx) : [...cur, idx];
+                            v[i] = { ...t, daysOfWeek: nextDays.sort((a,b)=>a-b) };
+                            setTasksLocal(v);
+                          }}>{label}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 ml-2">
+                    <label className="text-xs">Shiftable</label>
+                    <input type="checkbox" className="w-4 h-4" checked={(t.shiftable===undefined||t.shiftable===null)?true:!!t.shiftable} onChange={e=>{ const v=[...tasksLocal]; v[i]={...t, shiftable:e.target.checked}; setTasksLocal(v); }} />
+                  </div>
                   <div className="flex-1" />
                   <div className="flex items-center gap-2">
                     <button className="px-3 py-1.5 rounded bg-slate-900 text-white text-sm" onClick={saveTasks}>Save</button>
@@ -776,7 +870,7 @@ function DashboardApp({ user, onLogout }) {
                 </div>
               ))}
             </div>
-            <div className="mt-2"><button className="text-sm text-blue-600" onClick={()=>{ setTasksLocal([...tasksLocal, { id:'', applianceId:safeAppliances[0]?.id, watts:600, durationMin:120, earliest:'01:30', latest:'04:00', repeatsPerWeek:1 }]); bw && setBw(null); }}>+ Add task</button></div>
+            <div className="mt-2"><button className="text-sm text-blue-600" onClick={()=>{ const first=safeAppliances[0]; const w=Number(first?.watts ?? 600); const id=first?.id; setTasksLocal([...tasksLocal, { id:'', applianceId:id, watts:w, durationMin:120, earliest:'01:30', latest:'04:00', repeatsPerWeek:1 }]); bw && setBw(null); }}>+ Add task</button></div>
           </Section>
 
           <Section title="Appliances" icon={Layers}>
@@ -788,12 +882,9 @@ function DashboardApp({ user, onLogout }) {
             </div>
             {showAddAppl && (
               <div className="mb-3 p-3 rounded-xl border border-slate-200 bg-white/80 dark:bg-slate-900/40">
-                <div className="grid sm:grid-cols-2 lg:grid-cols-6 gap-2 items-end">
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end">
                   <div className="flex flex-col"><label className="text-xs">Name</label><input className="border rounded px-2 py-1 bg-white dark:bg-slate-900" value={addAppl.name} onChange={e=>setAddAppl(a=>({ ...a, name:e.target.value }))} placeholder="e.g., Dryer"/></div>
                   <div className="flex flex-col"><label className="text-xs">Watts</label><input className="border rounded px-2 py-1 bg-white dark:bg-slate-900" type="number" value={addAppl.ratedPowerW} onChange={e=>setAddAppl(a=>({ ...a, ratedPowerW:e.target.value }))}/></div>
-                  <div className="flex flex-col"><label className="text-xs">Cycle (min)</label><input className="border rounded px-2 py-1 bg-white dark:bg-slate-900" type="number" value={addAppl.cycleMinutes} onChange={e=>setAddAppl(a=>({ ...a, cycleMinutes:e.target.value }))}/></div>
-                  <div className="flex flex-col"><label className="text-xs">Latest</label><input className="border rounded px-2 py-1 bg-white dark:bg-slate-900" type="time" value={addAppl.latestFinish} onChange={e=>setAddAppl(a=>({ ...a, latestFinish:e.target.value }))}/></div>
-                  <div className="flex items-center gap-2"><label className="text-xs">Shiftable</label><input type="checkbox" checked={addAppl.flexible} onChange={e=>setAddAppl(a=>({ ...a, flexible:e.target.checked }))}/></div>
                   <div className="flex items-center gap-2">
                     <button disabled={savingAdd} className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60" onClick={saveNewAppliance}>{savingAdd ? 'Saving…' : 'Save'}</button>
                     <button className="px-3 py-1.5 rounded-lg border text-sm" onClick={()=>{ setShowAddAppl(false); }}>Cancel</button>
@@ -810,7 +901,10 @@ function DashboardApp({ user, onLogout }) {
                 {safeAppliances.map((a) => (
                   <div key={a.id} className="p-3 rounded-xl border border-slate-200 bg-white/70 flex items-center gap-3">
                     {a.icon ? <a.icon className="w-5 h-5 text-slate-600" /> : <Plug className="w-5 h-5 text-slate-600" />}
-                    <div className="flex-1 min-w-0"><div className="font-medium truncate">{a.label}</div><div className="text-xs text-slate-500">{a.flexible ? "Shiftable" : "Non-shiftable"}</div></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{a.label}</div>
+                      <div className="text-xs text-slate-500">{(Number(a.watts||0) > 0 ? `${a.watts} W • ` : '')}{a.flexible ? "Shiftable" : "Non-shiftable"}</div>
+                    </div>
                     <label className="inline-flex items-center cursor-pointer select-none">
                       <input type="checkbox" className="sr-only peer" checked={!!a.flexible} disabled={!!savingToggles[a.id]} onChange={(e)=>persistApplianceFlexible(a.id, e.target.checked)} />
                       <div className={`w-10 h-6 ${savingToggles[a.id] ? 'bg-slate-300' : 'bg-slate-200'} rounded-full peer-checked:bg-emerald-500 relative transition`}>
@@ -853,7 +947,7 @@ function DashboardApp({ user, onLogout }) {
                   { id:"ac", name:"Air Conditioner", ratedPowerW:1200, cycleMinutes:180, latestFinish:"23:00", noiseCurfew:false }
                 ];
                 await fetch(`/config/appliances?userId=${userId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(items)});
-                await reloadUserConfig(); // Reload to show new appliances
+                await reloadUserConfig(); // Reload to show new appliances and refresh projection
               }}>Save Appliances</button>
 
               <button className="px-3 py-1.5 rounded-lg border" onClick={async()=>{
@@ -879,7 +973,7 @@ function DashboardApp({ user, onLogout }) {
     <button className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm flex items-center gap-2" onClick={()=>{
       fetch('/scheduler/optimize', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId, date, alpha }) }).then(r=>r.json()).then(j=>{ if (j?.plan) { setPlan(j.plan); showToast('Plan updated'); } });
     }}><RefreshCcw className="w-4 h-4"/> Optimize</button>
-    <button className="px-3 py-1.5 rounded-lg border text-sm" onClick={()=>{ setTasksLocal([...tasksLocal, { id:'', applianceId:safeAppliances[0]?.id, watts:600, durationMin:120, earliest:'01:30', latest:'04:00', repeatsPerWeek:1 }]); }}>+ Task</button>
+  <button className="px-3 py-1.5 rounded-lg border text-sm" onClick={()=>{ const first=safeAppliances[0]; const w=Number(first?.watts ?? 600); const id=first?.id; setTasksLocal([...tasksLocal, { id:'', applianceId:id, watts:w, durationMin:120, earliest:'01:30', latest:'04:00', repeatsPerWeek:1 }]); }}>+ Task</button>
     <button className="px-3 py-1.5 rounded-lg border text-sm" onClick={()=>setShowCoach(true)}>Coach</button>
   </div>
   <Toasts toasts={toasts} onDismiss={(id)=>setToasts(ts=>ts.filter(x=>x.id!==id))} />

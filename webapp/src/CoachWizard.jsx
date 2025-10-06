@@ -168,7 +168,9 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
               durationMin: Number(t.durationMin || t.cycleMinutes || 0),
               earliest: t.earliest || '06:00',
               latest: t.latest || t.latestFinish || '22:00',
-              repeatsPerWeek: Number(t.repeatsPerWeek || t.runsPerWeek || 1)
+              repeatsPerWeek: Number(t.repeatsPerWeek || t.runsPerWeek || 1),
+              shiftable: (t.shiftable === undefined || t.shiftable === null) ? true : !!t.shiftable,
+              daysOfWeek: Array.isArray(t.daysOfWeek) ? t.daysOfWeek.map(Number).filter(n=>Number.isFinite(n)) : undefined
             })));
           }
         }
@@ -434,7 +436,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
                 <div className="text-sm text-slate-500 border rounded p-3 bg-slate-50">No tasks yet. Create one with + Add task.</div>
               )}
               {tasks.map((t, i) => (
-                <div key={i} className="grid grid-cols-1 sm:grid-cols-6 gap-2 border rounded p-2">
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-8 gap-2 border rounded p-2">
                   <div className="flex flex-col sm:col-span-2">
                     <label className="text-sm text-slate-600 mb-1">Appliance</label>
                     <select className="border rounded px-2 py-1" value={t.applianceId||''} onChange={e=>{ const v=[...tasks]; v[i]={...t, applianceId:e.target.value}; setTasks(v); }}>
@@ -458,6 +460,28 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
                     <label className="text-sm text-slate-600 mb-1">Runs per week</label>
                     <input className="border rounded px-2 py-1" type="number" value={t.repeatsPerWeek||1} onChange={e=>{ const v=[...tasks]; v[i]={...t, repeatsPerWeek:e.target.value}; setTasks(v); }} />
                   </div>
+                  <div className="flex flex-col sm:col-span-2">
+                    <label className="text-sm text-slate-600 mb-1">Days of week</label>
+                    <div className="flex flex-wrap gap-1">
+                      {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((label,idx)=>{
+                        const selected = Array.isArray(t.daysOfWeek) ? t.daysOfWeek.includes(idx) : false;
+                        return (
+                          <button type="button" key={idx} className={`px-2 py-1 text-xs rounded border ${selected?'bg-emerald-600 text-white border-emerald-600':'bg-white'}`} onClick={()=>{
+                            const v=[...tasks];
+                            const cur = Array.isArray(t.daysOfWeek)?[...t.daysOfWeek]:[];
+                            const has = cur.includes(idx);
+                            const nextDays = has ? cur.filter(d=>d!==idx) : [...cur, idx];
+                            v[i] = { ...t, daysOfWeek: nextDays.sort((a,b)=>a-b) };
+                            setTasks(v);
+                          }}>{label}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-6">
+                    <label className="text-sm text-slate-600">Shiftable</label>
+                    <input type="checkbox" checked={(t.shiftable===undefined||t.shiftable===null)?true:!!t.shiftable} onChange={e=>{ const v=[...tasks]; v[i]={...t, shiftable:e.target.checked}; setTasks(v); }} />
+                  </div>
                   <div className="sm:col-span-6 flex justify-end"><button className="text-rose-600 text-sm" onClick={()=>{ const v=[...tasks]; v.splice(i,1); setTasks(v); }}>Remove</button></div>
                 </div>
               ))}
@@ -473,7 +497,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
                 setSaving(true); setError('');
                 try {
                   const toPost = (Array.isArray(tasks)?tasks:[])
-                    .map((t, i) => ({ id: t.id || `t${i+1}`, applianceId: t.applianceId, durationMin: Number(t.durationMin||0), earliest: t.earliest||'06:00', latest: t.latest||'22:00', repeatsPerWeek: Number(t.repeatsPerWeek||1) }))
+                    .map((t, i) => ({ id: t.id || `t${i+1}`, applianceId: t.applianceId, durationMin: Number(t.durationMin||0), earliest: t.earliest||'06:00', latest: t.latest||'22:00', repeatsPerWeek: Number(t.repeatsPerWeek||1), shiftable: (t.shiftable===undefined||t.shiftable===null)?true:!!t.shiftable, daysOfWeek: Array.isArray(t.daysOfWeek)?t.daysOfWeek:undefined }))
                     .filter(t => t.applianceId && (t.durationMin||0) > 0);
                   const res = await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(toPost) });
                   const j = res && await res.json().catch(()=>({ ok:false }));

@@ -16,7 +16,7 @@ public type TariffPlan record {
 
 public type Device record { string id; string name; int watts; int defaultDurationMin; };
 
-public type Task record { string id; string applianceId; int durationMin; string earliest; string latest; int repeatsPerWeek; };
+public type Task record { string id; string applianceId; int durationMin; string earliest; string latest; int repeatsPerWeek; boolean? shiftable?; int[]? daysOfWeek?; };
 
 public type CO2ModelType "CONSTANT"|"PROFILE_48";
 public type CO2Model record { CO2ModelType modelType; decimal value?; decimal[48]? profile?; };

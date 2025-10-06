@@ -49,7 +49,19 @@ function parseTask(map<json> m, int i) returns Task {
     int rpw = 1;
     json? jr = m["repeatsPerWeek"]; if jr is int { rpw = jr; } else if jr is decimal { rpw = <int>jr; }
 
-    return { id, applianceId, durationMin: duration, earliest, latest, repeatsPerWeek: rpw };
+    boolean shiftable = true;
+    json? jf = m["shiftable"]; if jf is boolean { shiftable = jf; } else if jf is string { shiftable = jf.toLowerAscii() == "true"; }
+    int[]? daysOfWeek = ();
+    json? jdow = m["daysOfWeek"]; if jdow is json[] {
+        int[] days = [];
+        foreach json v in jdow {
+            if v is int { int d = v; if d < 0 { d = 0; } if d > 6 { d = 6; } days.push(d); }
+            else if v is decimal { int d = <int>v; if d < 0 { d = 0; } if d > 6 { d = 6; } days.push(d); }
+        }
+        daysOfWeek = days;
+    }
+
+    return { id, applianceId, durationMin: duration, earliest, latest, repeatsPerWeek: rpw, shiftable, daysOfWeek };
 }
 
 public type UpsertResponse record { boolean ok; };
@@ -189,8 +201,8 @@ service /config on new http:Listener(port_config) {
         } else {
             return { ok: false };
         }
-        setTasks(userId, arr);
-        return { ok: true };
+        boolean ok = trySetTasks(userId, arr);
+        return { ok: ok };
     }
     resource function post co2model(string userId, @http:Payload CO2Model m) returns UpsertResponse|error {
         setCO2Model(userId, m);

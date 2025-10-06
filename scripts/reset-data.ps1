@@ -33,9 +33,10 @@ function Set-ConfigValue {
     [Parameter(Mandatory=$true)][string]$UserId,
     [Parameter(Mandatory=$true)][string]$JsonBody
   )
+  $encodedUser = [uri]::EscapeDataString($UserId)
   $candidates = @(
-    "http://localhost:8090/config/$Endpoint/$UserId",
-    "http://localhost:9080/config/$Endpoint/$UserId"
+    "http://localhost:8090/config/${Endpoint}?userId=$encodedUser",
+    "http://localhost:9080/config/${Endpoint}?userId=$encodedUser"
   )
   foreach ($u in $candidates) {
     try {

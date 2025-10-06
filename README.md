@@ -28,6 +28,7 @@ Ontology‑driven energy advice for Sri Lanka, powered by Ballerina microservice
 ```powershell
 Set-Location -Path .\deploy
 docker compose up -d fuseki mqtt
+docker compose up -d
 ```
 
 2) Start backend (all Ballerina services in one process)

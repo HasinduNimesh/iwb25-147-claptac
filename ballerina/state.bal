@@ -105,6 +105,14 @@ public function setTasks(string userId, Task[] t) {
         io:println("Error saving tasks: ", result.message());
     }
 }
+public function trySetTasks(string userId, Task[] t) returns boolean {
+    error? result = saveTasks(userId, t);
+    if result is error {
+        io:println("Error saving tasks: ", result.message());
+        return false;
+    }
+    return true;
+}
 public function getTasks(string userId) returns Task[] { 
     Task[]|error result = loadTasks(userId);
     return result is Task[] ? result : [];
