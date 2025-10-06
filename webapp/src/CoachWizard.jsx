@@ -72,7 +72,7 @@ function Nav({ step, setStep, maxStep, onClose }) {
 }
 
 export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
-  const MAX = 4;
+  const MAX = 5;
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -104,6 +104,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
   const [blockRates, setBlockRates] = useState(defaultBlockRates);
   const [touRates, setTouRates] = useState(defaultTouRates);
   const [appliances, setAppliances] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [co2Mode, setCo2Mode] = useState('default'); // default | constant | profile
   const [co2Constant, setCo2Constant] = useState('0.53');
   const [co2Profile, setCo2Profile] = useState(''); // 48 comma-separated values
@@ -153,10 +154,21 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
             setAppliances(arr.map(x => ({
               name: x.name || x.id,
               watts: Number(x.ratedPowerW ?? 0),
-              minutes: Number(x.cycleMinutes ?? 60),
-              earliest: '06:00',
-              latest: x.latestFinish || '22:00',
-              perWeek: 1,
+            })));
+          }
+        }
+        // Tasks
+        const tRes2 = await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`).catch(() => null);
+        if (tRes2?.ok) {
+          const ts = await tRes2.json().catch(() => []);
+          if (Array.isArray(ts) && ts.length) {
+            setTasks(ts.map(t => ({
+              id: t.id,
+              applianceId: t.applianceId,
+              durationMin: Number(t.durationMin || t.cycleMinutes || 0),
+              earliest: t.earliest || '06:00',
+              latest: t.latest || t.latestFinish || '22:00',
+              repeatsPerWeek: Number(t.repeatsPerWeek || t.runsPerWeek || 1)
             })));
           }
         }
@@ -250,26 +262,17 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
   async function postAppliances() {
     setSaving(true); setError('');
     try {
-      const items = appliances.map(a => ({ id: a.name.toLowerCase().replace(/\s+/g, ''), name: a.name, ratedPowerW: Number(a.watts||0), cycleMinutes: Number(a.minutes||0), earliestStart: a.earliest, latestFinish: a.latest, runsPerWeek: Number(a.perWeek||0) }));
+      const items = appliances.map(a => ({ id: a.name.toLowerCase().replace(/\s+/g, ''), name: a.name, ratedPowerW: Number(a.watts||0) }));
   const res = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items) });
   const j = res && await res.json().catch(()=>({ ok:false }));
   if (!res || !res.ok || !j?.ok) throw new Error('Failed to save appliances');
-      // Also persist tasks derived from these appliances so Dashboard "Tasks" stays in sync
-      try {
-        const tasks = appliances
-          .map(a => ({
-            id: a.name.toLowerCase().replace(/\s+/g, ''),
-            applianceId: a.name.toLowerCase().replace(/\s+/g, ''),
-            durationMin: Number(a.minutes || 0),
-            earliest: a.earliest || '06:00',
-            latest: a.latest || '22:00',
-            repeatsPerWeek: Number(a.perWeek || 0),
-          }))
-          .filter(t => (t.repeatsPerWeek || 0) > 0 && (t.durationMin || 0) > 0);
-        await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tasks) }).catch(()=>null);
-  onChange?.('appliances');
-      } catch (_) { /* non-fatal */ }
+      onChange?.('appliances');
       saveLocalConfig();
+      // Prefill tasks if none present
+      if (!(Array.isArray(tasks) && tasks.length)) {
+        const pref = appliances.map(a => ({ id: a.name.toLowerCase().replace(/\s+/g, ''), applianceId: a.name.toLowerCase().replace(/\s+/g, ''), durationMin: 60, earliest: '06:00', latest: '22:00', repeatsPerWeek: 1 }));
+        setTasks(pref);
+      }
       setStep(3);
     } catch (e) { setError(e.message || String(e)); } finally { setSaving(false); }
   }
@@ -292,7 +295,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
   if (!res || !res.ok || !j?.ok) throw new Error('Failed to save CO2 model');
       }
       saveLocalConfig();
-      setStep(4);
+      setStep(5);
     } catch (e) { setError(e.message || String(e)); } finally { setSaving(false); }
   }
 
@@ -379,7 +382,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
 
         {step === 2 && (
           <div>
-            <StepHeader title="Appliances & Tasks" subtitle="Tell us what you want to track" />
+            <StepHeader title="Appliances" subtitle="Add the devices you want to track" />
             <div className="space-y-3 max-h-80 overflow-auto pr-1 pb-2">
               {appliances.length === 0 && (
                 <div className="text-sm text-slate-500 border rounded p-3 bg-slate-50">
@@ -387,7 +390,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
                 </div>
               )}
               {appliances.map((a, i) => (
-                <div key={i} className="grid grid-cols-1 sm:grid-cols-6 gap-2 border rounded p-2">
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-2 border rounded p-2">
                   <div className="flex flex-col sm:col-span-2">
                     <label htmlFor={`name-${i}`} className="text-sm text-slate-600 mb-1">
                       Appliance name
@@ -402,34 +405,6 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
                     </label>
                     <input id={`watts-${i}`} className="border rounded px-2 py-1" type="number" inputMode="numeric" placeholder="e.g., 500" value={a.watts} onChange={e=>{ const v=[...appliances]; v[i]={...a,watts:e.target.value}; setAppliances(v); }} />
                   </div>
-                  <div className="flex flex-col">
-                    <label htmlFor={`minutes-${i}`} className="text-sm text-slate-600 mb-1">
-                      Cycle duration (min)
-                      <InfoIcon text="How long the appliance typically runs for one complete cycle in minutes. For continuous appliances like refrigerators, estimate daily running time." />
-                    </label>
-                    <input id={`minutes-${i}`} className="border rounded px-2 py-1" type="number" inputMode="numeric" placeholder="e.g., 60" value={a.minutes} onChange={e=>{ const v=[...appliances]; v[i]={...a,minutes:e.target.value}; setAppliances(v); }} />
-                  </div>
-                  <div className="flex flex-col">
-                    <label htmlFor={`earliest-${i}`} className="text-sm text-slate-600 mb-1">
-                      Earliest start
-                      <InfoIcon text="The earliest time of day you would typically start using this appliance. For scheduling and energy optimization." />
-                    </label>
-                    <input id={`earliest-${i}`} className="border rounded px-2 py-1" type="time" value={a.earliest} onChange={e=>{ const v=[...appliances]; v[i]={...a,earliest:e.target.value}; setAppliances(v); }} />
-                  </div>
-                  <div className="flex flex-col">
-                    <label htmlFor={`latest-${i}`} className="text-sm text-slate-600 mb-1">
-                      Latest finish
-                      <InfoIcon text="The latest time of day by which this appliance should complete its operation. Important for scheduling to avoid peak rates." />
-                    </label>
-                    <input id={`latest-${i}`} className="border rounded px-2 py-1" type="time" value={a.latest} onChange={e=>{ const v=[...appliances]; v[i]={...a,latest:e.target.value}; setAppliances(v); }} />
-                  </div>
-                  <div className="flex flex-col">
-                    <label htmlFor={`perweek-${i}`} className="text-sm text-slate-600 mb-1">
-                      Runs per week
-                      <InfoIcon text="How many times this appliance is typically used in a week. Used to calculate energy consumption and potential savings." />
-                    </label>
-                    <input id={`perweek-${i}`} className="border rounded px-2 py-1" type="number" inputMode="numeric" placeholder="e.g., 3" value={a.perWeek} onChange={e=>{ const v=[...appliances]; v[i]={...a,perWeek:e.target.value}; setAppliances(v); }} />
-                  </div>
                   <div className="sm:col-span-6 flex justify-end"><button className="text-rose-600 text-sm" onClick={()=>{ const v=[...appliances]; v.splice(i,1); setAppliances(v); }}>Remove</button></div>
                 </div>
               ))}
@@ -439,7 +414,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
                 type="button"
                 aria-label="Add appliance"
                 className="text-sm text-blue-700 border border-blue-200 rounded px-3 py-1 bg-white hover:bg-blue-50"
-                onClick={()=>setAppliances([...appliances,{ name:'New Appliance', watts: 1000, minutes: 30, earliest:'06:00', latest:'22:00', perWeek:1 }])}
+                onClick={()=>setAppliances([...appliances,{ name:'New Appliance', watts: 1000 }])}
               >
                 + Add appliance
               </button>
@@ -452,6 +427,68 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
         )}
 
         {step === 3 && (
+          <div>
+            <StepHeader title="Tasks" subtitle="Add tasks you want the scheduler to consider" />
+            <div className="space-y-2 max-h-80 overflow-auto pr-1 pb-2">
+              {tasks.length === 0 && (
+                <div className="text-sm text-slate-500 border rounded p-3 bg-slate-50">No tasks yet. Create one with + Add task.</div>
+              )}
+              {tasks.map((t, i) => (
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-6 gap-2 border rounded p-2">
+                  <div className="flex flex-col sm:col-span-2">
+                    <label className="text-sm text-slate-600 mb-1">Appliance</label>
+                    <select className="border rounded px-2 py-1" value={t.applianceId||''} onChange={e=>{ const v=[...tasks]; v[i]={...t, applianceId:e.target.value}; setTasks(v); }}>
+                      <option value="" disabled>Select appliance…</option>
+                      {appliances.map(a => (<option key={a.name} value={a.name.toLowerCase().replace(/\s+/g,'')}>{a.name}</option>))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-sm text-slate-600 mb-1">Duration (min)</label>
+                    <input className="border rounded px-2 py-1" type="number" value={t.durationMin||''} onChange={e=>{ const v=[...tasks]; v[i]={...t, durationMin:e.target.value}; setTasks(v); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-sm text-slate-600 mb-1">Earliest</label>
+                    <input className="border rounded px-2 py-1" type="time" value={t.earliest||'06:00'} onChange={e=>{ const v=[...tasks]; v[i]={...t, earliest:e.target.value}; setTasks(v); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-sm text-slate-600 mb-1">Latest</label>
+                    <input className="border rounded px-2 py-1" type="time" value={t.latest||'22:00'} onChange={e=>{ const v=[...tasks]; v[i]={...t, latest:e.target.value}; setTasks(v); }} />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-sm text-slate-600 mb-1">Runs per week</label>
+                    <input className="border rounded px-2 py-1" type="number" value={t.repeatsPerWeek||1} onChange={e=>{ const v=[...tasks]; v[i]={...t, repeatsPerWeek:e.target.value}; setTasks(v); }} />
+                  </div>
+                  <div className="sm:col-span-6 flex justify-end"><button className="text-rose-600 text-sm" onClick={()=>{ const v=[...tasks]; v.splice(i,1); setTasks(v); }}>Remove</button></div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2">
+              <button type="button" className="text-sm text-blue-700 border border-blue-200 rounded px-3 py-1 bg-white hover:bg-blue-50" onClick={()=>{
+                const first = appliances[0]?.name?.toLowerCase?.().replace(/\s+/g,'') || '';
+                setTasks([...(tasks||[]), { id:'', applianceId:first, durationMin:60, earliest:'06:00', latest:'22:00', repeatsPerWeek:1 }]);
+              }}>+ Add task</button>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button disabled={saving || appliances.length===0} onClick={async()=>{
+                setSaving(true); setError('');
+                try {
+                  const toPost = (Array.isArray(tasks)?tasks:[])
+                    .map((t, i) => ({ id: t.id || `t${i+1}`, applianceId: t.applianceId, durationMin: Number(t.durationMin||0), earliest: t.earliest||'06:00', latest: t.latest||'22:00', repeatsPerWeek: Number(t.repeatsPerWeek||1) }))
+                    .filter(t => t.applianceId && (t.durationMin||0) > 0);
+                  const res = await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(toPost) });
+                  const j = res && await res.json().catch(()=>({ ok:false }));
+                  if (!res || !res.ok || !j?.ok) throw new Error('Failed to save tasks');
+                  onChange?.('tasks');
+                  saveLocalConfig();
+                  setStep(4);
+                } catch (e) { setError(e.message || String(e)); } finally { setSaving(false); }
+              }} className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60">Save & Continue</button>
+            </div>
+            <Nav step={step} setStep={setStep} maxStep={MAX} onClose={onClose} />
+          </div>
+        )}
+
+        {step === 4 && (
           <div>
             <StepHeader title="CO₂ Model" subtitle="Pick how we estimate emissions so we can schedule at cleaner times" />
             <div className="space-y-2">
@@ -488,7 +525,7 @@ export default function CoachWizard({ userId, onComplete, onClose, onChange }) {
           </div>
         )}
 
-        {step === 4 && (
+        {step === 5 && (
           <div>
             <StepHeader title="Rooftop Solar (optional)" subtitle="Tell us about your solar setup" />
             <label className="flex items-center gap-2 mb-2">

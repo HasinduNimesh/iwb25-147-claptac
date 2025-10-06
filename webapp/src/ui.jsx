@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, Plug, Info, CheckCircle2, XCircle, RefreshCcw, Calendar, Layers, Sparkles, Wifi, Activity, Sun, Moon, Loader2, Settings, Scale, Receipt, LogOut, User, Leaf } from "lucide-react";
+import { TrendingUp, Plug, Info, CheckCircle2, XCircle, RefreshCcw, Calendar, Layers, Sparkles, Wifi, Activity, Sun, Moon, Loader2, Settings, Scale, Receipt, LogOut, User, Leaf, Plus, Trash2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useAuth } from './AuthContext';
 import Login from './Login.tsx';
@@ -35,6 +35,8 @@ function normalizeWindows(input) {
 }
 function isTOU(t) { return t && (t.tariffType === 'TOU' || (t.tou && !t.block)); }
 function isBLOCK(t) { return t && (t.tariffType === 'BLOCK' || (!!t.block)); }
+function tariffTypeOf(t) { return isTOU(t) ? 'TOU' : (isBLOCK(t) ? 'BLOCK' : null); }
+function slugifyId(s) { try { return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || ''; } catch { return ''; } }
 // Client-side fallback: estimate monthly bill using tariff config
 function computeBillPreviewFromTariff(tariff, monthlyKWh = 150) {
   try {
@@ -152,6 +154,20 @@ function Section({ title, icon: Icon, right, children }) {
     </div>
   );
 }
+
+const Toasts = ({ toasts, onDismiss }) => (
+  <div className="fixed bottom-4 right-4 space-y-2 z-50">
+    {toasts.map(t => (
+      <div key={t.id} className={`px-3 py-2 rounded-lg shadow border text-sm ${t.type==='error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+        <div className="flex items-center gap-2">
+          {t.type==='error' ? <XCircle className="w-4 h-4"/> : <CheckCircle2 className="w-4 h-4"/>}
+          <span className="truncate">{t.message}</span>
+          <button onClick={()=>onDismiss(t.id)} className="ml-2 text-slate-500 hover:text-slate-700">✕</button>
+        </div>
+      </div>
+    ))}
+  </div>
+);
 function SavingsChart({ data }) { return (
   <div className="h-40 w-full"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
     <defs><linearGradient id="grad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.4} /><stop offset="95%" stopColor="#22c55e" stopOpacity={0} /></linearGradient></defs>
@@ -219,6 +235,12 @@ function DashboardApp({ user, onLogout }) {
   const [error, setError] = useState("");
   const [accepted, setAccepted] = useState({});
   const [dismissed, setDismissed] = useState({});
+  const [toasts, setToasts] = useState([]);
+  const showToast = (message, type = 'success') => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts(ts => [...ts, { id, type, message }]);
+    setTimeout(() => setToasts(ts => ts.filter(x => x.id !== id)), 2000);
+  };
 
   // Reload user-configured appliances and tasks after Coach changes
   const reloadUserConfig = React.useCallback(async () => {
@@ -347,9 +369,15 @@ function DashboardApp({ user, onLogout }) {
 
   // Simple Tasks editor state (local-only list + post to backend)
   const [tasksLocal, setTasksLocal] = React.useState([]);
+  const [deletingTask, setDeletingTask] = React.useState(null);
   const [mtdKWh, setMtdKWh] = React.useState(58);
   const [usage, setUsage] = React.useState([]);
+  const [lastUpdated, setLastUpdated] = React.useState({ usageAt: null, billAt: null, projAt: null, planAt: null });
   const [bw, setBw] = React.useState(null);
+  const [showAddAppl, setShowAddAppl] = useState(false);
+  const [addAppl, setAddAppl] = useState({ name: '', ratedPowerW: 600, cycleMinutes: 60, latestFinish: '22:00', flexible: true });
+  const [savingAdd, setSavingAdd] = useState(false);
+  const [savingRemove, setSavingRemove] = useState({});
 
   // Compute kWh for current task input
   function kwhOf(watts, minutes) {
@@ -368,11 +396,91 @@ function DashboardApp({ user, onLogout }) {
     } catch {}
   }
 
+  async function deleteTaskAt(index) {
+    try {
+      const ok = typeof window !== 'undefined' ? window.confirm('Delete this task?') : true;
+      if (!ok) return;
+      setDeletingTask(index);
+      const next = tasksLocal.filter((_, i) => i !== index);
+      setTasksLocal(next); // optimistic
+      const body = next.map((t, i)=>({ id: t.id || `t${i+1}`, applianceId: t.applianceId || (safeAppliances[0]?.id||'unknown'), durationMin: Number(t.durationMin||0), earliest: t.earliest||'06:00', latest: t.latest||'22:00', repeatsPerWeek: Number(t.repeatsPerWeek||1) }));
+      const res = await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).catch(()=>null);
+      if (!(res && res.ok)) throw new Error('Delete failed');
+      showToast('Task deleted');
+    } catch (_) {
+      showToast('Delete failed','error');
+    } finally {
+      setDeletingTask(null);
+    }
+  }
+
   async function checkBlockWarning(task) {
     const kw = kwhOf(task.watts, task.durationMin);
     const res = await fetch(`/billing/blockwarning?userId=${encodeURIComponent(userId)}&currentKWh=${mtdKWh}&taskKWh=${kw}`).catch(()=>null);
     const j = res && res.ok ? await res.json().catch(()=>null) : null;
     setBw(j||null);
+  }
+
+  // Add or remove appliances (persisted via /config/appliances)
+  async function saveNewAppliance() {
+    if (!addAppl.name || String(addAppl.name).trim().length === 0) { showToast('Enter a name','error'); return; }
+    setSavingAdd(true);
+    try {
+      const id = slugifyId(addAppl.name) || `appliance-${Date.now()}`;
+      const cfgRes = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(()=>null);
+      const existing = cfgRes && cfgRes.ok ? await cfgRes.json().catch(()=>[]) : [];
+      // Avoid duplicates by id
+      const filtered = Array.isArray(existing) ? existing.filter(x => (x.id||x.name) !== id) : [];
+      const nextItem = {
+        id,
+        name: addAppl.name.trim(),
+        ratedPowerW: Number(addAppl.ratedPowerW||0),
+        cycleMinutes: Number(addAppl.cycleMinutes||0),
+        latestFinish: addAppl.latestFinish || '22:00',
+        noiseCurfew: !addAppl.flexible,
+      };
+      const next = [...filtered, nextItem];
+      const res = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(next) }).catch(()=>null);
+      if (!(res && res.ok)) throw new Error('Save failed');
+      await reloadUserConfig();
+      setShowAddAppl(false);
+      setAddAppl({ name: '', ratedPowerW: 600, cycleMinutes: 60, latestFinish: '22:00', flexible: true });
+      showToast('Appliance added');
+    } catch (_) {
+      showToast('Add failed','error');
+    } finally {
+      setSavingAdd(false);
+    }
+  }
+
+  async function removeAppliance(id) {
+    try {
+      const ok = typeof window !== 'undefined' ? window.confirm('Remove this appliance?') : true;
+      if (!ok) return;
+      setSavingRemove(m=>({ ...m, [id]: true }));
+      const cfgRes = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(()=>null);
+      const existing = cfgRes && cfgRes.ok ? await cfgRes.json().catch(()=>[]) : [];
+      const next = (Array.isArray(existing)?existing:[]).filter(x => (x.id||x.name) !== id);
+      const res = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(next) }).catch(()=>null);
+      if (!(res && res.ok)) throw new Error('Delete failed');
+      // Remove tasks that reference this appliance, server-side and locally
+      const tasksRes = await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`).catch(()=>null);
+      const tasksJson = tasksRes && tasksRes.ok ? await tasksRes.json().catch(()=>[]) : [];
+      const remainingTasks = (Array.isArray(tasksJson)?tasksJson:[]).filter(t => t.applianceId !== id);
+      const removedCount = (Array.isArray(tasksJson)?tasksJson:[]).length - remainingTasks.length;
+      // Persist filtered tasks using the expected shape
+      const toPost = remainingTasks.map(t => ({ id: t.id, applianceId: t.applianceId, durationMin: Number(t.durationMin||t.cycleMinutes||0), earliest: t.earliest || '06:00', latest: t.latest || t.latestFinish || '22:00', repeatsPerWeek: Number(t.repeatsPerWeek||t.runsPerWeek||1) }));
+      const resTasks = await fetch(`/config/tasks?userId=${encodeURIComponent(userId)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(toPost) }).catch(()=>null);
+      if (!(resTasks && resTasks.ok)) throw new Error('Task cleanup failed');
+      // Update local UI state
+      setTasksLocal(prev => prev.filter(t => t.applianceId !== id));
+      await reloadUserConfig();
+      showToast(removedCount > 0 ? `Removed (and ${removedCount} task${removedCount>1?'s':''})` : 'Removed');
+    } catch (_) {
+      showToast('Remove failed','error');
+    } finally {
+      setSavingRemove(m=>{ const n={...m}; delete n[id]; return n; });
+    }
   }
 
   // Load recent usage for charts and MTD
@@ -389,7 +497,8 @@ function DashboardApp({ user, onLogout }) {
         const mtd = arr
           .filter(e => typeof e.date === 'string' && e.date.startsWith(ym))
           .reduce((s, e) => s + (Number(e.kWh) || 0), 0);
-        setMtdKWh(Math.round(mtd));
+  setMtdKWh(Math.round(mtd));
+  setLastUpdated((lu)=>({ ...lu, usageAt: new Date() }));
       } catch (_) { /* ignore */ }
     })();
     return () => { cancelled = true; };
@@ -398,12 +507,14 @@ function DashboardApp({ user, onLogout }) {
   // Persist a shiftable toggle by updating config overrides (noiseCurfew = !flexible)
   let _toggleInFlight = false;
   let _toggleQueued = null;
+  const [savingToggles, setSavingToggles] = useState({});
   async function persistApplianceFlexible(id, flexible) {
     if (_toggleInFlight) { _toggleQueued = { id, flexible }; return; }
     _toggleInFlight = true;
     try {
       // Optimistic UI update
       setAppliances((arr) => arr.map((a) => (a.id === id ? { ...a, flexible } : a)));
+      setSavingToggles((m)=>({ ...m, [id]: true }));
 
       // Get existing overrides
       const cfgRes = await fetch(`/config/appliances?userId=${encodeURIComponent(userId)}`).catch(() => null);
@@ -435,11 +546,14 @@ function DashboardApp({ user, onLogout }) {
       if (!ok) throw new Error('Save failed');
       // Re-sync from server to avoid any local drift or stale fields
       await reloadUserConfig();
+      showToast('Saved');
     } catch (_) {
       // Revert optimistic change on failure
       setAppliances((arr) => arr.map((a) => (a.id === id ? { ...a, flexible: !flexible } : a)));
+      showToast('Save failed', 'error');
     } finally {
       _toggleInFlight = false;
+      setSavingToggles((m)=>{ const n={...m}; delete n[id]; return n; });
       if (_toggleQueued) {
         const nextReq = _toggleQueued; _toggleQueued = null;
         // Fire and forget the last queued state
@@ -458,7 +572,7 @@ function DashboardApp({ user, onLogout }) {
           <Pill className="ml-2 bg-emerald-100 text-emerald-700">Ontology-Driven</Pill>
           <div className="ml-auto flex items-center gap-2 min-w-0">
             <Calendar className="w-4 h-4 text-slate-500" />
-            <input type="date" className="px-2 py-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/50" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input type="date" className="px-3 py-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/50 text-base" value={date} onChange={(e) => setDate(e.target.value)} />
             {/* user selection removed; using authenticated user */}
             <div className="hidden md:flex items-center gap-2 md:ml-4 md:pl-4 md:border-l md:border-slate-300 md:dark:border-slate-700">
               <User className="w-4 h-4 text-slate-500" />
@@ -484,15 +598,28 @@ function DashboardApp({ user, onLogout }) {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <main className="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="col-span-1 lg:col-span-1 space-y-4">
           <Section title="HomeEnergy Coach" icon={Settings} right={null}>
             <div className="text-sm text-slate-600">Answer a few questions to tailor tariffs, tasks, CO₂, and solar settings.</div>
             <div className="mt-2"><button className="px-3 py-1.5 rounded bg-emerald-600 text-white" onClick={()=>setShowCoach(true)}>Open Coach</button></div>
           </Section>
-          <Section title="Today's Savings" icon={TrendingUp} right={<div className="flex items-center gap-2 text-sm text-slate-500"><Wifi className={`w-4 h-4 ${health ? "text-emerald-500" : "text-slate-400"}`} /><span>{health ? "Connected" : "Offline"}</span></div>}>
+          <Section title="Today's Savings" icon={TrendingUp} right={<div className="flex items-center gap-2 text-sm text-slate-500">
+            {tariffTypeOf(tariff) && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-slate-50 text-slate-700">
+                {tariffTypeOf(tariff)} tariff
+              </span>
+            )}
+            <Wifi className={`w-4 h-4 ${health ? "text-emerald-500" : "text-slate-400"}`} /><span>{health ? "Connected" : "Offline"}</span>
+          </div>}>
             <div className="flex items-end gap-4"><div><div className="text-3xl font-extrabold">{fmtMoneyLKR(totalSaving)}</div><div className="text-sm text-slate-500">Estimated saving for {date} from your plan</div></div></div>
-            <div className="mt-3"><SavingsChart data={buildSavingsSeries(usage, plan)} /></div>
+            <div className="mt-3 flex items-start justify-between gap-2">
+              <div className="flex-1"><SavingsChart data={buildSavingsSeries(usage, plan)} /></div>
+              <Info className="w-4 h-4 text-slate-400 mt-1" title="Savings uses today's recommended plan and your recent usage from Reports service." />
+            </div>
+            {lastUpdated.usageAt && (
+              <div className="mt-2 text-xs text-slate-500">{(() => { const secs=Math.max(1,Math.floor((Date.now()-new Date(lastUpdated.usageAt).getTime())/1000)); const when=secs<60?`${secs}s ago`:`${Math.floor(secs/60)}m ago`; return `Reports service • ${when}`; })()}</div>
+            )}
           </Section>
           {isTOU(tariff) ? (
             <Section title="Tariff Windows (Asia/Colombo)" icon={Info}>
@@ -640,7 +767,12 @@ function DashboardApp({ user, onLogout }) {
                     <input className="border rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" type="time" value={t.latest||'22:00'} onChange={e=>{ const v=[...tasksLocal]; v[i]={...t, latest:e.target.value}; setTasksLocal(v); }} />
                   </div>
                   <div className="flex-1" />
-                  <button className="px-3 py-1.5 rounded bg-slate-900 text-white text-sm" onClick={saveTasks}>Save</button>
+                  <div className="flex items-center gap-2">
+                    <button className="px-3 py-1.5 rounded bg-slate-900 text-white text-sm" onClick={saveTasks}>Save</button>
+                    <button title="Delete task" disabled={deletingTask===i} className="px-2 py-1.5 rounded border text-sm hover:bg-rose-50 text-rose-600 disabled:opacity-60" onClick={()=>deleteTaskAt(i)}>
+                      <Trash2 className="w-4 h-4 inline-block mr-1"/> Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -648,18 +780,54 @@ function DashboardApp({ user, onLogout }) {
           </Section>
 
           <Section title="Appliances" icon={Layers}>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {safeAppliances.map((a) => (
-                <div key={a.id} className="p-3 rounded-xl border border-slate-200 bg-white/70 flex items-center gap-3">
-                  {a.icon ? <a.icon className="w-5 h-5 text-slate-600" /> : <Plug className="w-5 h-5 text-slate-600" />}
-                  <div className="flex-1 min-w-0"><div className="font-medium truncate">{a.label}</div><div className="text-xs text-slate-500">{a.flexible ? "Shiftable" : "Non-shiftable"}</div></div>
-                  <label className="inline-flex items-center cursor-pointer select-none">
-        <input type="checkbox" className="sr-only peer" checked={!!a.flexible} onChange={(e)=>persistApplianceFlexible(a.id, e.target.checked)} />
-                    <div className="w-10 h-6 bg-slate-200 rounded-full peer-checked:bg-emerald-500 relative transition"><div className="w-5 h-5 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:left-4 transition"/></div>
-                  </label>
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm text-slate-600">Manage your devices and their shiftability.</div>
+              <button className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border text-sm" onClick={()=>setShowAddAppl(v=>!v)}>
+                <Plus className="w-4 h-4"/> {showAddAppl ? 'Close' : 'Add appliance'}
+              </button>
             </div>
+            {showAddAppl && (
+              <div className="mb-3 p-3 rounded-xl border border-slate-200 bg-white/80 dark:bg-slate-900/40">
+                <div className="grid sm:grid-cols-2 lg:grid-cols-6 gap-2 items-end">
+                  <div className="flex flex-col"><label className="text-xs">Name</label><input className="border rounded px-2 py-1 bg-white dark:bg-slate-900" value={addAppl.name} onChange={e=>setAddAppl(a=>({ ...a, name:e.target.value }))} placeholder="e.g., Dryer"/></div>
+                  <div className="flex flex-col"><label className="text-xs">Watts</label><input className="border rounded px-2 py-1 bg-white dark:bg-slate-900" type="number" value={addAppl.ratedPowerW} onChange={e=>setAddAppl(a=>({ ...a, ratedPowerW:e.target.value }))}/></div>
+                  <div className="flex flex-col"><label className="text-xs">Cycle (min)</label><input className="border rounded px-2 py-1 bg-white dark:bg-slate-900" type="number" value={addAppl.cycleMinutes} onChange={e=>setAddAppl(a=>({ ...a, cycleMinutes:e.target.value }))}/></div>
+                  <div className="flex flex-col"><label className="text-xs">Latest</label><input className="border rounded px-2 py-1 bg-white dark:bg-slate-900" type="time" value={addAppl.latestFinish} onChange={e=>setAddAppl(a=>({ ...a, latestFinish:e.target.value }))}/></div>
+                  <div className="flex items-center gap-2"><label className="text-xs">Shiftable</label><input type="checkbox" checked={addAppl.flexible} onChange={e=>setAddAppl(a=>({ ...a, flexible:e.target.checked }))}/></div>
+                  <div className="flex items-center gap-2">
+                    <button disabled={savingAdd} className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60" onClick={saveNewAppliance}>{savingAdd ? 'Saving…' : 'Save'}</button>
+                    <button className="px-3 py-1.5 rounded-lg border text-sm" onClick={()=>{ setShowAddAppl(false); }}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {safeAppliances.length === 0 ? (
+              <div className="text-sm text-slate-600">
+                No appliances yet. <button className="text-blue-600 underline" onClick={()=>setShowCoach(true)}>Add from Coach</button>
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {safeAppliances.map((a) => (
+                  <div key={a.id} className="p-3 rounded-xl border border-slate-200 bg-white/70 flex items-center gap-3">
+                    {a.icon ? <a.icon className="w-5 h-5 text-slate-600" /> : <Plug className="w-5 h-5 text-slate-600" />}
+                    <div className="flex-1 min-w-0"><div className="font-medium truncate">{a.label}</div><div className="text-xs text-slate-500">{a.flexible ? "Shiftable" : "Non-shiftable"}</div></div>
+                    <label className="inline-flex items-center cursor-pointer select-none">
+                      <input type="checkbox" className="sr-only peer" checked={!!a.flexible} disabled={!!savingToggles[a.id]} onChange={(e)=>persistApplianceFlexible(a.id, e.target.checked)} />
+                      <div className={`w-10 h-6 ${savingToggles[a.id] ? 'bg-slate-300' : 'bg-slate-200'} rounded-full peer-checked:bg-emerald-500 relative transition`}>
+                        {savingToggles[a.id] ? (
+                          <Loader2 className="w-4 h-4 absolute top-1 left-3 text-slate-600 animate-spin" />
+                        ) : (
+                          <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:left-4 transition"/>
+                        )}
+                      </div>
+                    </label>
+                    <button title="Remove" disabled={!!savingRemove[a.id]} onClick={()=>removeAppliance(a.id)} className="ml-1 p-1 rounded hover:bg-rose-50 text-rose-600 disabled:opacity-60">
+                      <Trash2 className="w-4 h-4"/>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </Section>
 
           <Section title="Quick Setup" icon={Settings}>
@@ -707,6 +875,14 @@ function DashboardApp({ user, onLogout }) {
       {error && (<div className="fixed bottom-4 right-4 bg-rose-50 text-rose-700 border border-rose-200 px-3 py-2 rounded-lg shadow">{error}</div>)}
 
   <footer className="max-w-6xl mx-auto p-4 text-xs text-slate-500"><div className="flex items-center gap-2"><Info className="w-4 h-4" /><span>Uses your configured tariff, appliances, CO₂ and solar. If services are offline, some sections may be empty.</span></div></footer>
+  <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white/90 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800 backdrop-blur p-2 flex items-center justify-around z-40">
+    <button className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm flex items-center gap-2" onClick={()=>{
+      fetch('/scheduler/optimize', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId, date, alpha }) }).then(r=>r.json()).then(j=>{ if (j?.plan) { setPlan(j.plan); showToast('Plan updated'); } });
+    }}><RefreshCcw className="w-4 h-4"/> Optimize</button>
+    <button className="px-3 py-1.5 rounded-lg border text-sm" onClick={()=>{ setTasksLocal([...tasksLocal, { id:'', applianceId:safeAppliances[0]?.id, watts:600, durationMin:120, earliest:'01:30', latest:'04:00', repeatsPerWeek:1 }]); }}>+ Task</button>
+    <button className="px-3 py-1.5 rounded-lg border text-sm" onClick={()=>setShowCoach(true)}>Coach</button>
+  </div>
+  <Toasts toasts={toasts} onDismiss={(id)=>setToasts(ts=>ts.filter(x=>x.id!==id))} />
   </div>
   {showCoach && (
     <CoachWizard
